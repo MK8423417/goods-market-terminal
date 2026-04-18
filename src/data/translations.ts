@@ -1,0 +1,136 @@
+export const translations: Record<string, Record<string, string>> = {
+  en: {
+    // Navigation
+    "Watchlist": "Watchlist",
+    "Orders": "Orders",
+    "Alerts": "Alerts",
+    
+    // Watchlist Page
+    "Market Watchlist": "Market Watchlist",
+    "Search products...": "Search products...",
+    "All": "All",
+    "Today's Best Deals": "Today's Best Deals",
+    
+    // Columns
+    "Product": "Product",
+    "Category": "Category",
+    "Unit": "Unit",
+    "Lowest Price": "Lowest Price",
+    "24h Change": "24h Change",
+    "Supplier": "Supplier",
+    "Trend (7d)": "Trend (7d)",
+    
+    // Categories
+    "Lácteos": "Dairy",
+    "Panadería": "Bakery",
+    "Aceites": "Oils",
+    "Despensa": "Pantry",
+    "Carnes": "Meat",
+    "Pescadería": "Fish",
+    "Bebidas": "Beverages",
+    
+    // Products
+    "Huevos L": "Eggs (L)",
+    "Leche Entera": "Whole Milk",
+    "Pan de Molde": "Sliced Bread",
+    "Aceite de Oliva Virgen Extra": "Extra Virgin Olive Oil",
+    "Arroz Redondo": "Short-grain Rice",
+    "Pasta (Macarrones)": "Pasta (Macaroni)",
+    "Pechuga de Pollo": "Chicken Breast",
+    "Atún Claro (3 latas)": "Light Tuna (3 cans)",
+    "Azúcar Blanco": "White Sugar",
+    "Café Molido": "Ground Coffee",
+    "Cerveza Lager": "Lager Beer",
+    "Agua Mineral": "Mineral Water",
+    "Queso Gouda": "Gouda Cheese",
+    "Tomate Frito": "Fried Tomato Sauce",
+    "Carne Picada Mix": "Mixed Minced Meat",
+    "Mantequilla": "Butter",
+    "Cebollas": "Onions",
+    "Patatas": "Potatoes",
+    "Harina de Trigo": "Wheat Flour",
+    "Sal Fina": "Fine Salt",
+    
+    // Product Detail
+    "Loading...": "Loading...",
+    "Lowest at": "Lowest at",
+    "per ": "per ",
+    "Market Comparison": "Market Comparison",
+    "Buy at Lowest Market Price": "Buy at Lowest Market Price",
+    "Order Placed Simulated": "Order Placed Simulated",
+    "Redirecting...": "Redirecting...",
+    "Quantity": "Quantity",
+    "Estimated Total": "Estimated Total",
+    "Cancel": "Cancel",
+    "Confirm Demo Order": "Confirm Demo Order",
+    "This is a concept demo. No real world fulfilment will occur.": "This is a concept demo. No real world fulfilment will occur.",
+    "Buy": "Buy"
+  },
+  es: {
+    // Navigation
+    "Watchlist": "Lista de Seguimiento",
+    "Orders": "Pedidos",
+    "Alerts": "Alertas",
+    
+    // Watchlist Page
+    "Market Watchlist": "Mercado Local",
+    "Search products...": "Buscar productos...",
+    "All": "Todo",
+    "Today's Best Deals": "Las Mejores Ofertas de Hoy",
+    
+    // Columns
+    "Product": "Producto",
+    "Category": "Categoría",
+    "Unit": "Unidad",
+    "Lowest Price": "Mejor Precio",
+    "24h Change": "Cambio 24h",
+    "Supplier": "Proveedor",
+    "Trend (7d)": "Tendencia (7d)",
+    
+    // Categories (Keep original keys as values as well)
+    "Lácteos": "Lácteos",
+    "Panadería": "Panadería",
+    "Aceites": "Aceites",
+    "Despensa": "Despensa",
+    "Carnes": "Carnes",
+    "Pescadería": "Pescadería",
+    "Bebidas": "Bebidas",
+    
+    // Products (Return identical string)
+    "Huevos L": "Huevos L",
+    "Leche Entera": "Leche Entera",
+    "Pan de Molde": "Pan de Molde",
+    "Aceite de Oliva Virgen Extra": "Aceite de Oliva Virgen Extra",
+    "Arroz Redondo": "Arroz Redondo",
+    "Pasta (Macarrones)": "Pasta (Macarrones)",
+    "Pechuga de Pollo": "Pechuga de Pollo",
+    "Atún Claro (3 latas)": "Atún Claro (3 latas)",
+    "Azúcar Blanco": "Azúcar Blanco",
+    "Café Molido": "Café Molido",
+    "Cerveza Lager": "Cerveza Lager",
+    "Agua Mineral": "Agua Mineral",
+    "Queso Gouda": "Queso Gouda",
+    "Tomate Frito": "Tomate Frito",
+    "Carne Picada Mix": "Carne Picada Mix",
+    "Mantequilla": "Mantequilla",
+    "Cebollas": "Cebollas",
+    "Patatas": "Patatas",
+    "Harina de Trigo": "Harina de Trigo",
+    "Sal Fina": "Sal Fina",
+    
+    // Product Detail
+    "Loading...": "Cargando...",
+    "Lowest at": "Más barato en",
+    "per ": "por ",
+    "Market Comparison": "Comparativa de Mercado",
+    "Buy at Lowest Market Price": "Comprar al Mejor Precio",
+    "Order Placed Simulated": "Pedido Simulado Realizado",
+    "Redirecting...": "Redirigiendo...",
+    "Quantity": "Cantidad",
+    "Estimated Total": "Total Estimado",
+    "Cancel": "Cancelar",
+    "Confirm Demo Order": "Confirmar Pedido de Prueba",
+    "This is a concept demo. No real world fulfilment will occur.": "Esto es una demostración. No se realizará ningún pedido real.",
+    "Buy": "Comprar"
+  }
+};
