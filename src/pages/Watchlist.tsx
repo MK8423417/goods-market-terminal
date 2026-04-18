@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useMarketSimulator } from '../hooks/useMarketSimulator';
 import { PRODUCTS, CATEGORIES, SUPPLIERS } from '../data/mockData';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
-import { Search, Star, ExternalLink, Activity, CheckCircle as LucideCheckCircle } from 'lucide-react';
+import { Search, Star, Activity, CheckCircle as LucideCheckCircle, Filter, ChevronDown, Check } from 'lucide-react';
 import { TableVirtuoso } from 'react-virtuoso';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -21,6 +21,23 @@ function Watchlist() {
   const [showOrderModal, setShowOrderModal] = useState<string | null>(null);
   const [orderQuantity, setOrderQuantity] = useState(1);
   const [orderSuccess, setOrderSuccess] = useState(false);
+
+  // Supplier filtering
+  const [selectedSupplierIds, setSelectedSupplierIds] = useState<Set<string>>(new Set(Object.keys(SUPPLIERS)));
+  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
+  const supplierDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (supplierDropdownRef.current && !supplierDropdownRef.current.contains(event.target as Node)) {
+        setShowSupplierDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+
   
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -28,7 +45,7 @@ function Watchlist() {
   // Process market data to find current lowest and 24h change
   const processedProducts = PRODUCTS.map(p => {
     const history = market[p.id] || [];
-    if (history.length < 2) return { ...p, currentLowest: 0, lowestSupplier: '', change24h: 0, history: [], sparkData: [] };
+    if (history.length < 2) return { ...p, currentLowest: 0, lowestSupplier: null, change24h: 0, history: [], sparkData: [], activeAlertTarget: null };
 
     const currentPoint = history[history.length - 1];
     const yesterdayPoint = history[Math.max(0, history.length - 8)]; // Approximation of 24h ago in our ticks
@@ -37,7 +54,7 @@ function Watchlist() {
     let lowestSupplierId = '';
     
     Object.keys(SUPPLIERS).forEach(sId => {
-      if (currentPoint[sId] < lowestPrice) {
+      if (selectedSupplierIds.has(sId) && currentPoint[sId] < lowestPrice) {
         lowestPrice = currentPoint[sId];
         lowestSupplierId = sId;
       }
@@ -45,8 +62,20 @@ function Watchlist() {
 
     let yesterdayLowest = Infinity;
     Object.keys(SUPPLIERS).forEach(sId => {
-      if (yesterdayPoint[sId] < yesterdayLowest) yesterdayLowest = yesterdayPoint[sId];
+      if (selectedSupplierIds.has(sId) && yesterdayPoint[sId] < yesterdayLowest) yesterdayLowest = yesterdayPoint[sId];
     });
+
+    // Handle case where no suppliers are selected for this product
+    if (lowestSupplierId === '') {
+      return {
+        ...p,
+        currentLowest: 0,
+        lowestSupplier: null,
+        change24h: 0,
+        sparkData: [],
+        activeAlertTarget: null
+      };
+    }
 
     const change24h = ((lowestPrice - yesterdayLowest) / yesterdayLowest) * 100;
 
@@ -109,7 +138,7 @@ function Watchlist() {
   const handleQuickBuy = () => {
     if (!showOrderModal) return;
     const targetProduct = processedProducts.find(p => p.id === showOrderModal);
-    if (!targetProduct) return;
+    if (!targetProduct || !targetProduct.lowestSupplier) return;
 
     placeOrder({
       productId: targetProduct.id,
@@ -127,13 +156,33 @@ function Watchlist() {
     }, 2500);
   };
 
+  const toggleSupplierId = (id: string) => {
+    const next = new Set(selectedSupplierIds);
+    if (next.has(id)) {
+      if (next.size > 1) next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelectedSupplierIds(next);
+  };
+
+  const selectAllSuppliers = () => setSelectedSupplierIds(new Set(Object.keys(SUPPLIERS)));
+  const clearSuppliers = () => {
+    // Keep at least one selected to avoid empty logic issues
+    const firstId = Object.keys(SUPPLIERS)[0];
+    setSelectedSupplierIds(new Set([firstId]));
+  };
+
+
+
   return (
     <div className="page-content">
       <header style={{ margin: '-20px -20px 10px -20px', paddingBottom: '8px' }}>
         <h1 style={{ marginBottom: '12px', fontSize: '1.2rem' }}>{t('Market Watchlist')}</h1>
         
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', overflowX: 'auto', paddingBottom: '4px' }}>
-          <div className="search-container" style={{ margin: 0, minWidth: '240px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingBottom: '4px' }}>
+          {/* Search Bar */}
+          <div className="search-container" style={{ margin: 0, minWidth: '200px', flexShrink: 0 }}>
             <Search className="search-icon" size={16} />
             <input 
               type="text" 
@@ -145,7 +194,89 @@ function Watchlist() {
             />
           </div>
 
-          <div className="pill-scroll" style={{ paddingBottom: 0, flex: 1, margin: 0 }}>
+          {/* New Supplier Dropdown Trigger */}
+          <div style={{ position: 'relative' }} ref={supplierDropdownRef}>
+            <button 
+              onClick={() => setShowSupplierDropdown(!showSupplierDropdown)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 12px',
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                color: 'var(--text-primary)',
+                fontSize: '0.85rem',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <Filter size={14} />
+              <span>
+                {selectedSupplierIds.size === Object.keys(SUPPLIERS).length 
+                  ? t('All Suppliers') 
+                  : `${selectedSupplierIds.size} ${t('Suppliers')}`}
+              </span>
+              <ChevronDown size={14} style={{ transform: showSupplierDropdown ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+            </button>
+
+            {showSupplierDropdown && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 8px)',
+                left: 0,
+                width: '240px',
+                background: 'var(--bg-color)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '12px',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+                zIndex: 1000,
+                overflow: 'hidden'
+              }}>
+                <div style={{ padding: '12px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)' }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{t('Select Suppliers')}</span>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={selectAllSuppliers} style={{ background: 'none', border: 'none', color: 'var(--color-up)', cursor: 'pointer', fontSize: '0.75rem', padding: 0 }}>{t('All')}</button>
+                    <button onClick={clearSuppliers} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.75rem', padding: 0 }}>{t('Reset')}</button>
+                  </div>
+                </div>
+                <div style={{ maxHeight: '300px', overflowY: 'auto', padding: '12px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {Object.values(SUPPLIERS).map(s => (
+                      <div 
+                        key={s.id} 
+                        onClick={() => toggleSupplierId(s.id)}
+                        style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'space-between',
+                          padding: '8px 10px', 
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          background: selectedSupplierIds.has(s.id) ? 'var(--bg-secondary)' : 'transparent',
+                        }}
+                        className="supplier-filter-item"
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          {s.logo ? (
+                            <img src={s.logo} alt="" style={{ width: '18px', height: '18px', borderRadius: '4px', background: '#fff' }} />
+                          ) : (
+                            <div style={{ width: '18px', height: '18px', borderRadius: '4px', background: s.color, color: '#fff', fontSize: '0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>{s.name.charAt(0)}</div>
+                          )}
+                          <span style={{ fontSize: '0.85rem', color: selectedSupplierIds.has(s.id) ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{s.name}</span>
+                        </div>
+                        {selectedSupplierIds.has(s.id) && <Check size={14} color="var(--color-up)" />}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Category Filter Pills */}
+          <div className="pill-scroll" style={{ paddingBottom: 0, flex: 1, margin: 0, overflowX: 'auto' }}>
             {['All', 'Favorites', ...CATEGORIES].map(cat => (
               <div 
                 key={cat} 
@@ -159,6 +290,7 @@ function Watchlist() {
           </div>
         </div>
       </header>
+
 
       {/* Main List Virtualized Table */}
       <section style={{ height: 'calc(100vh - 150px)', margin: '0 -20px' }}>
@@ -179,7 +311,7 @@ function Watchlist() {
               <th style={{ width: '10%', textAlign: 'right', padding: '8px 16px' }}>{t('Actions')}</th>
             </tr>
           )}
-          itemContent={(index, p) => {
+          itemContent={(_index, p) => {
             const isUp = p.change24h > 0;
             const isFavorite = favorites.includes(p.id);
             return (

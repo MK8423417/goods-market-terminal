@@ -62,7 +62,7 @@ export default function MyBusiness() {
         return {
           ...p,
           currentLowest: lowestPrice,
-          lowestSupplier: SUPPLIERS[lowestSupplierId],
+          lowestSupplier: lowestSupplierId ? SUPPLIERS[lowestSupplierId] : null,
           count,
           target,
           totalValue,
