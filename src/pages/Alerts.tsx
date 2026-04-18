@@ -37,9 +37,9 @@ function Alerts() {
             return (
               <div key={a.id} className="card" style={{ opacity: a.active ? 1 : 0.6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <span style={{ fontSize: '1.2rem' }}>{p.icon}</span>
-                    <span style={{ fontWeight: 600 }}>{p.name}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', minWidth: 0, overflow: 'hidden' }}>
+                    <span style={{ fontSize: '1.2rem', flexShrink: 0 }}>{p.icon}</span>
+                    <span style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</span>
                   </div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                     Target: <span className="mono-nums" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{a.targetPrice.toFixed(2)}€</span>

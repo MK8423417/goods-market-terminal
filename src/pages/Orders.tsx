@@ -36,9 +36,9 @@ function Orders() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {orders.map(o => (
             <div key={o.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontWeight: 600, marginBottom: '4px' }}>{o.productName} (x{o.quantity})</div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              <div style={{ minWidth: 0, overflow: 'hidden', flex: 1, marginRight: '16px' }}>
+                <div style={{ fontWeight: 600, marginBottom: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.productName} (x{o.quantity})</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {new Date(o.timestamp).toLocaleDateString()} &bull; <span className="supplier-chip" style={{ background: SUPPLIERS[o.supplierId]?.color, fontSize: '0.6rem' }}>{SUPPLIERS[o.supplierId]?.name}</span>
                 </div>
               </div>

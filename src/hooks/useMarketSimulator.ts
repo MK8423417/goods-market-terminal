@@ -63,7 +63,7 @@ export function useMarketSimulator() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [inventory, setInventory] = useState<Record<string, number>>({});
-  const [demand, setDemand] = useState<Record<string, number>>({});
+  const [demand, setDemand] = useState<Record<string, number | ''>>({});
 
   useEffect(() => {
     const savedOrders = localStorage.getItem('supplytrade_orders');
@@ -154,7 +154,7 @@ export function useMarketSimulator() {
     });
   }, []);
 
-  const updateDemand = useCallback((productId: string, quantity: number) => {
+  const updateDemand = useCallback((productId: string, quantity: number | '') => {
     setDemand(prev => {
       const updated = { ...prev, [productId]: quantity };
       localStorage.setItem('supplytrade_demand', JSON.stringify(updated));
@@ -162,5 +162,14 @@ export function useMarketSimulator() {
     });
   }, []);
 
-  return { market, orders, alerts, favorites, inventory, demand, placeOrder, addAlert, toggleAlert, removeAlert, toggleFavorite, updateInventory, updateDemand };
+  const removeDemand = useCallback((productId: string) => {
+    setDemand(prev => {
+      const updated = { ...prev };
+      delete updated[productId];
+      localStorage.setItem('supplytrade_demand', JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  return { market, orders, alerts, favorites, inventory, demand, placeOrder, addAlert, toggleAlert, removeAlert, toggleFavorite, updateInventory, updateDemand, removeDemand };
 }

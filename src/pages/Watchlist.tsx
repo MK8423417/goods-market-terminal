@@ -187,10 +187,10 @@ function Watchlist() {
                     fill={isFavorite ? '#F5A623' : 'none'} 
                   />
                 </td>
-                <td style={{ width: '20%', padding: '4px 16px' }} onClick={() => navigate(`/product/${p.id}`)}>
-                  <div className="table-icon-cell" style={{ gap: '8px' }}>
+                <td style={{ width: '20%', padding: '4px 16px', minWidth: 0 }} onClick={() => navigate(`/product/${p.id}`)}>
+                  <div className="table-icon-cell" style={{ gap: '8px', minWidth: 0, overflow: 'hidden' }}>
                     <div className="ticker-icon" style={{ width: '24px', height: '24px', fontSize: '0.8rem', flexShrink: 0 }}>{p.icon}</div>
-                    <span style={{ fontWeight: 500, fontSize: '0.9rem' }}>{t(p.name)}</span>
+                    <span style={{ fontWeight: 500, fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t(p.name)}</span>
                   </div>
                 </td>
                 <td style={{ width: '15%', color: 'var(--text-secondary)', fontSize: '0.8rem', padding: '4px 16px' }} onClick={() => navigate(`/product/${p.id}`)}>{t(p.category)}</td>

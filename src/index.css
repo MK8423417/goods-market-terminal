@@ -282,7 +282,7 @@ header {
 }
 .pill.active {
   background: var(--text-primary);
-  color: white;
+  color: var(--bg-color);
 }
 
 /* Data Table Styles */
@@ -326,4 +326,15 @@ header {
 .table-spark-container {
   height: 40px;
   width: 100px;
+}
+
+/* Hide default up/down arrows on number inputs */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield; /* Firefox */
 }

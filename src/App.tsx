@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import { Home, LineChart, LayoutList, Bell, Globe, Moon, Sun, Store } from 'lucide-react';
 import Watchlist from './pages/Watchlist';
 import ProductDetail from './pages/ProductDetail';
@@ -10,6 +10,10 @@ import { LanguageProvider, useLanguage } from './context/LanguageContext';
 
 function GlobalControls({ theme, toggleTheme }: { theme: 'light'|'dark', toggleTheme: () => void }) {
   const { locale, toggleLanguage } = useLanguage();
+  const location = useLocation();
+
+  if (location.pathname !== '/') return null;
+
   return (
     <div style={{ position: 'fixed', top: '16px', right: '16px', display: 'flex', gap: '8px', zIndex: 1000 }}>
       <button onClick={toggleTheme} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-primary)', padding: 0 }}>

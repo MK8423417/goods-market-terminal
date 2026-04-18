@@ -219,17 +219,16 @@ function ProductDetail() {
                       ? <LucideEye size={18} color="var(--text-secondary)" /> 
                       : <LucideEyeOff size={18} color="var(--border-color)" />}
                   </button>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: visibleSuppliers.has(s.id) ? 1 : 0.4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: visibleSuppliers.has(s.id) ? 1 : 0.4, minWidth: 0, overflow: 'hidden' }}>
                     {s.logo ? (
                       <img 
                         src={s.logo} 
                         alt={s.name}
                         onError={(e) => {
-                          // Fallback to initial logic if load fails
                           (e.target as HTMLElement).style.display = 'none';
                           (e.target as HTMLElement).nextElementSibling!.classList.remove('hidden-fallback');
                         }}
-                        style={{ width: '24px', height: '24px', borderRadius: '4px', objectFit: 'contain', background: '#fff', padding: '2px' }}
+                        style={{ width: '24px', height: '24px', borderRadius: '4px', objectFit: 'contain', background: '#fff', padding: '2px', flexShrink: 0 }}
                       />
                     ) : null}
                     <div className={s.logo ? "hidden-fallback" : ""} style={{ 
@@ -242,11 +241,12 @@ function ProductDetail() {
                       alignItems: 'center', 
                       justifyContent: 'center', 
                       fontSize: '0.75rem', 
-                      fontWeight: 'bold' 
+                      fontWeight: 'bold',
+                      flexShrink: 0 
                     }}>
-                      {s.name.charAt(0)}
+                      {s.name?.charAt(0)}
                     </div>
-                    <span style={{ fontWeight: 500 }}>{s.name}</span>
+                    <span style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
