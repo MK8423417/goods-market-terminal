@@ -32,6 +32,8 @@ function ProductDetail() {
 
   const [timeframe, setTimeframe] = useState<'1d'|'1w'|'1m'|'1y'>('1m');
   const [visibleSuppliers, setVisibleSuppliers] = useState<Set<string>>(new Set(Object.keys(SUPPLIERS)));
+  const [hoveredSupplierId, setHoveredSupplierId] = useState<string | null>(null);
+  const [chartMode, setChartMode] = useState<'all' | 'lowest'>('all');
 
   if (!product || history.length === 0) return <div style={{ padding: '20px' }}>{t('Loading...')}</div>;
 
@@ -61,9 +63,12 @@ function ProductDetail() {
 
   const chartData = history.slice(-sliceCount).map(h => {
     const point: any = { time: new Date(h.time).toLocaleTimeString() };
+    let lowestAtPoint = Infinity;
     Object.keys(SUPPLIERS).forEach(s => {
       point[s] = h[s];
+      if (h[s] < lowestAtPoint) lowestAtPoint = h[s];
     });
+    point['lowest'] = lowestAtPoint;
     return point;
   });
 
@@ -143,18 +148,43 @@ function ProductDetail() {
         <div style={{ color: 'var(--text-secondary)' }}>{t('per ')}{product.unit}</div>
       </div>
 
-      {/* Timeframes */}
-      <div className="pill-scroll" style={{ justifyContent: 'center', marginBottom: '16px' }}>
-        {['1d', '1w', '1m', '1y'].map(tf => (
-          <div 
-            key={tf} 
-            className={`pill ${timeframe === tf ? 'active' : ''}`}
-            onClick={() => setTimeframe(tf as any)}
-            style={{ textTransform: 'uppercase', padding: '6px 12px' }}
+      {/* Chart Controls */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <div className="pill-scroll" style={{ margin: 0, padding: 0 }}>
+          {['1d', '1w', '1m', '1y'].map(tf => (
+            <div 
+              key={tf} 
+              className={`pill ${timeframe === tf ? 'active' : ''}`}
+              onClick={() => setTimeframe(tf as any)}
+              style={{ textTransform: 'uppercase', padding: '6px 12px' }}
+            >
+              {tf}
+            </div>
+          ))}
+        </div>
+        
+        <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '16px', padding: '2px' }}>
+          <button 
+            onClick={() => setChartMode('all')}
+            style={{ 
+              background: chartMode === 'all' ? 'var(--text-primary)' : 'transparent',
+              color: chartMode === 'all' ? 'var(--bg-color)' : 'var(--text-secondary)',
+              border: 'none', borderRadius: '14px', padding: '4px 12px', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s'
+            }}
           >
-            {tf}
-          </div>
-        ))}
+            {t('Suppliers')}
+          </button>
+          <button 
+            onClick={() => setChartMode('lowest')}
+            style={{ 
+              background: chartMode === 'lowest' ? 'var(--text-primary)' : 'transparent',
+              color: chartMode === 'lowest' ? 'var(--bg-color)' : 'var(--text-secondary)',
+              border: 'none', borderRadius: '14px', padding: '4px 12px', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s'
+            }}
+          >
+            {t('Trend')}
+          </button>
+        </div>
       </div>
 
       {/* Chart */}
@@ -165,17 +195,37 @@ function ProductDetail() {
             <XAxis dataKey="time" hide />
             <YAxis domain={['auto', 'auto']} tick={{fontSize: 12, fontFamily: 'var(--font-mono)'}} axisLine={false} tickLine={false} />
             <Tooltip contentStyle={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }} />
-            {Object.values(SUPPLIERS).filter(s => visibleSuppliers.has(s.id)).map(s => (
+            
+            {chartMode === 'lowest' ? (
               <Line 
-                key={s.id} 
                 type="monotone" 
-                dataKey={s.id} 
-                stroke={s.color} 
-                strokeWidth={s.id === lowestSupplierId ? 3 : 1.5} 
+                dataKey="lowest" 
+                name={t("Lowest Price")}
+                stroke="var(--color-up)" 
+                strokeWidth={3} 
                 dot={false}
                 isAnimationActive={false}
               />
-            ))}
+            ) : (
+              Object.values(SUPPLIERS).filter(s => visibleSuppliers.has(s.id)).map(s => {
+                const isHovered = hoveredSupplierId === s.id;
+                const isFaded = hoveredSupplierId !== null && hoveredSupplierId !== s.id;
+                
+                return (
+                  <Line 
+                    key={s.id} 
+                    type="monotone" 
+                    dataKey={s.id} 
+                    name={s.name}
+                    stroke={isFaded ? 'var(--text-secondary)' : s.color} 
+                    strokeOpacity={isFaded ? 0.3 : 1}
+                    strokeWidth={isHovered ? 4 : (s.id === lowestSupplierId && !hoveredSupplierId ? 3 : 1.5)} 
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                );
+              })
+            )}
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -209,7 +259,19 @@ function ProductDetail() {
             const isUp = change > 0;
             
             return (
-              <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '16px', borderBottom: idx < Object.keys(SUPPLIERS).length - 1 ? '1px solid var(--border-color)' : 'none' }}>
+              <div 
+                key={s.id} 
+                onMouseEnter={() => setHoveredSupplierId(s.id)}
+                onMouseLeave={() => setHoveredSupplierId(null)}
+                style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  padding: '16px', 
+                  borderBottom: idx < Object.keys(SUPPLIERS).length - 1 ? '1px solid var(--border-color)' : 'none',
+                  background: hoveredSupplierId === s.id ? 'var(--bg-hover)' : 'transparent',
+                  transition: 'background 0.2s'
+                }}
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <button 
                     onClick={() => toggleSupplierVisibility(s.id)}
