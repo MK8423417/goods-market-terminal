@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useMarketSimulator } from '../hooks/useMarketSimulator';
 import { PRODUCTS, SUPPLIERS } from '../data/mockData';
@@ -34,6 +34,14 @@ function ProductDetail() {
   const [visibleSuppliers, setVisibleSuppliers] = useState<Set<string>>(new Set(Object.keys(SUPPLIERS)));
   const [hoveredSupplierId, setHoveredSupplierId] = useState<string | null>(null);
   const [chartMode, setChartMode] = useState<'all' | 'lowest'>('all');
+  const quantityInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (showOrderPanel && quantityInputRef.current) {
+      quantityInputRef.current.focus();
+      quantityInputRef.current.select();
+    }
+  }, [showOrderPanel]);
 
   if (!product || history.length === 0) return <div style={{ padding: '20px' }}>{t('Loading...')}</div>;
 
@@ -55,14 +63,15 @@ function ProductDetail() {
 
   const lowestSupplier = SUPPLIERS[lowestSupplierId];
   
-  // Format history for recharts based on timeframe
-  let sliceCount = history.length;
-  if (timeframe === '1d') sliceCount = 2;
-  else if (timeframe === '1w') sliceCount = 7;
-  else if (timeframe === '1m') sliceCount = 30;
+  // Calculate timeframe bounds
+  const now = Date.now();
+  let timeLimit = now - (24 * 60 * 60 * 1000); // Default 1d
+  if (timeframe === '1w') timeLimit = now - (7 * 24 * 60 * 60 * 1000);
+  else if (timeframe === '1m') timeLimit = now - (30 * 24 * 60 * 60 * 1000);
+  else if (timeframe === '1y') timeLimit = now - (365 * 24 * 60 * 60 * 1000);
 
-  const chartData = history.slice(-sliceCount).map(h => {
-    const point: any = { time: new Date(h.time).toLocaleTimeString() };
+  const chartData = history.filter(h => h.time >= timeLimit).map(h => {
+    const point: any = { timestamp: h.time };
     let lowestAtPoint = Infinity;
     Object.keys(SUPPLIERS).forEach(s => {
       point[s] = h[s];
@@ -71,6 +80,12 @@ function ProductDetail() {
     point['lowest'] = lowestAtPoint;
     return point;
   });
+
+  const formatXAxis = (tickItem: number) => {
+    const d = new Date(tickItem);
+    if (timeframe === '1d') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleDateString([], { day: '2-digit', month: '2-digit' });
+  };
 
   const toggleSupplierVisibility = (sId: string) => {
     setVisibleSuppliers(prev => {
@@ -122,79 +137,159 @@ function ProductDetail() {
     }, 2500);
   };
 
-  return (
-    <div className="page-content" style={{ paddingBottom: '120px' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: '16px', margin: '-20px -20px 20px -20px', padding: '16px 20px' }}>
-        <button onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-          <LucideChevronLeft size={24} />
-        </button>
-        <span style={{ fontSize: '1.2rem' }}>{product.icon}</span>
-        <h1 style={{ fontSize: '1.1rem', flex: 1 }}>{t(product.name)}</h1>
-        <button onClick={openAlertPanel} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-          <LucideBell size={20} color="var(--text-secondary)" />
-        </button>
-      </header>
+    const CustomTooltip = ({ active, payload, label }: any) => {
+      if (active && payload && payload.length) {
+        // Filter out the 'lowest' trend line data if it exists in payload
+        const actualPrices = payload.filter((p: any) => p.dataKey !== 'lowest' && typeof p.value === 'number');
+        if (actualPrices.length === 0) return null;
 
-      {/* Main Price */}
-      <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-        <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'center', gap: '8px', alignItems: 'center' }}>
-          <span style={{ color: 'var(--text-secondary)' }}>{t('Lowest at')}</span>
-          <span className="supplier-chip" style={{ background: lowestSupplier.color }}>{lowestSupplier.name}</span>
-        </div>
-        <div className="mono-nums price-tick-down" style={{ fontSize: '3.5rem', fontWeight: 'bold' }}>
-          {lowestPrice.toFixed(2)}
-          <span style={{ fontSize: '1.5rem', color: 'var(--text-secondary)', marginLeft: '4px' }}>€</span>
-        </div>
-        <div style={{ color: 'var(--text-secondary)' }}>{t('per ')}{product.unit}</div>
-      </div>
-
-      {/* Chart Controls */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <div className="pill-scroll" style={{ margin: 0, padding: 0 }}>
-          {['1d', '1w', '1m', '1y'].map(tf => (
-            <div 
-              key={tf} 
-              className={`pill ${timeframe === tf ? 'active' : ''}`}
-              onClick={() => setTimeframe(tf as any)}
-              style={{ textTransform: 'uppercase', padding: '6px 12px' }}
-            >
-              {tf}
-            </div>
-          ))}
-        </div>
+        const sorted = [...actualPrices].sort((a, b) => (a.value as number) - (b.value as number));
+        const min = sorted[0];
+        const max = sorted[sorted.length - 1];
         
-        <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '16px', padding: '2px' }}>
-          <button 
-            onClick={() => setChartMode('all')}
-            style={{ 
-              background: chartMode === 'all' ? 'var(--text-primary)' : 'transparent',
-              color: chartMode === 'all' ? 'var(--bg-color)' : 'var(--text-secondary)',
-              border: 'none', borderRadius: '14px', padding: '4px 12px', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s'
-            }}
-          >
-            {t('Suppliers')}
-          </button>
-          <button 
-            onClick={() => setChartMode('lowest')}
-            style={{ 
-              background: chartMode === 'lowest' ? 'var(--text-primary)' : 'transparent',
-              color: chartMode === 'lowest' ? 'var(--bg-color)' : 'var(--text-secondary)',
-              border: 'none', borderRadius: '14px', padding: '4px 12px', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s'
-            }}
-          >
-            {t('Trend')}
-          </button>
-        </div>
-      </div>
+        // Calculate median
+        const values = sorted.map(s => s.value as number);
+        let median = 0;
+        const mid = Math.floor(values.length / 2);
+        if (values.length % 2 === 0) {
+          median = (values[mid - 1] + values[mid]) / 2;
+        } else {
+          median = values[mid];
+        }
 
-      {/* Chart */}
-      <div style={{ height: '240px', margin: '0 -10px', marginBottom: '40px' }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--bg-secondary)" />
-            <XAxis dataKey="time" hide />
-            <YAxis domain={['auto', 'auto']} tick={{fontSize: 12, fontFamily: 'var(--font-mono)'}} axisLine={false} tickLine={false} />
-            <Tooltip contentStyle={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }} />
+        return (
+          <div className="card" style={{ 
+            padding: '12px', 
+            fontSize: '0.8rem', 
+            minWidth: '160px', 
+            boxShadow: '0 8px 16px rgba(0,0,0,0.2)',
+            border: '1px solid var(--border-color)',
+            background: 'var(--bg-color)',
+            opacity: 0.95
+          }}>
+            <div style={{ color: 'var(--text-secondary)', marginBottom: '8px', borderBottom: '1px solid var(--border-color)', pb: '4px' }}>
+              {new Date(label).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <span style={{ color: max.color, fontWeight: 'bold' }}>High:</span>
+              <span className="mono-nums">{max.value.toFixed(2)}€ ({max.name})</span>
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <span style={{ color: min.color, fontWeight: 'bold' }}>Low:</span>
+              <span className="mono-nums">{min.value.toFixed(2)}€ ({min.name})</span>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', mt: '4px', borderTop: '1px solid var(--border-color)', pt: '4px' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Median:</span>
+              <span className="mono-nums" style={{ fontWeight: 'bold' }}>{median.toFixed(2)}€</span>
+            </div>
+          </div>
+        );
+      }
+      return null;
+    };
+
+    return (
+      <div className="page-content" style={{ paddingBottom: '120px' }}>
+        <header style={{ display: 'flex', alignItems: 'center', gap: '16px', margin: '-20px -20px 20px -20px', padding: '16px 20px' }}>
+          <button 
+            onClick={() => navigate(-1)} 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '4px', 
+              background: 'var(--bg-secondary)', 
+              border: '1px solid var(--border-color)', 
+              padding: '6px 10px', 
+              borderRadius: '8px', 
+              cursor: 'pointer',
+              color: 'var(--text-primary)',
+              fontSize: '0.85rem',
+              fontWeight: 500
+            }}
+          >
+            <LucideChevronLeft size={18} />
+            {t('Go Back')}
+          </button>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ fontSize: '1.2rem' }}>{product.icon}</span>
+            <h1 style={{ fontSize: '1.1rem' }}>{t(product.name)}</h1>
+          </div>
+          <button onClick={openAlertPanel} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+            <LucideBell size={20} color="var(--text-secondary)" />
+          </button>
+        </header>
+  
+        {/* Main Price */}
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'center', gap: '8px', alignItems: 'center' }}>
+            <span style={{ color: 'var(--text-secondary)' }}>{t('Lowest at')}</span>
+            <span className="supplier-chip" style={{ background: lowestSupplier.color }}>{lowestSupplier.name}</span>
+          </div>
+          <div className="mono-nums price-tick-down" style={{ fontSize: '3.5rem', fontWeight: 'bold' }}>
+            {lowestPrice.toFixed(2)}
+            <span style={{ fontSize: '1.5rem', color: 'var(--text-secondary)', marginLeft: '4px' }}>€</span>
+          </div>
+          <div style={{ color: 'var(--text-secondary)' }}>{t('per ')}{product.unit}</div>
+        </div>
+  
+        {/* Chart Controls */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div className="pill-scroll" style={{ margin: 0, padding: 0 }}>
+            {['1d', '1w', '1m', '1y'].map(tf => (
+              <div 
+                key={tf} 
+                className={`pill ${timeframe === tf ? 'active' : ''}`}
+                onClick={() => setTimeframe(tf as any)}
+                style={{ textTransform: 'uppercase', padding: '6px 12px' }}
+              >
+                {tf}
+              </div>
+            ))}
+          </div>
+          
+          <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '16px', padding: '2px' }}>
+            <button 
+              onClick={() => setChartMode('all')}
+              style={{ 
+                background: chartMode === 'all' ? 'var(--text-primary)' : 'transparent',
+                color: chartMode === 'all' ? 'var(--bg-color)' : 'var(--text-secondary)',
+                border: 'none', borderRadius: '14px', padding: '4px 12px', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s'
+              }}
+            >
+              {t('Suppliers')}
+            </button>
+            <button 
+              onClick={() => setChartMode('lowest')}
+              style={{ 
+                background: chartMode === 'lowest' ? 'var(--text-primary)' : 'transparent',
+                color: chartMode === 'lowest' ? 'var(--bg-color)' : 'var(--text-secondary)',
+                border: 'none', borderRadius: '14px', padding: '4px 12px', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s'
+              }}
+            >
+              {t('Trend')}
+            </button>
+          </div>
+        </div>
+  
+        {/* Chart */}
+        <div style={{ height: '240px', margin: '0 -10px', marginBottom: '40px' }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--bg-secondary)" />
+              <XAxis 
+                dataKey="timestamp" 
+                type="number" 
+                domain={['dataMin', 'dataMax']} 
+                tickFormatter={formatXAxis}
+                tick={{fontSize: 10, fill: 'var(--text-secondary)'}}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis domain={['auto', 'auto']} tick={{fontSize: 12, fontFamily: 'var(--font-mono)'}} axisLine={false} tickLine={false} />
+              <Tooltip content={<CustomTooltip />} />
             
             {chartMode === 'lowest' ? (
               <Line 
@@ -363,10 +458,12 @@ function ProductDetail() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                       <button onClick={() => setOrderQuantity(Math.max(1, orderQuantity - 1))} style={{ width: '32px', height: '32px', borderRadius: '16px', border: '1px solid var(--border-color)', background: 'var(--bg-color)', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--text-primary)' }}>-</button>
                       <input 
+                        ref={quantityInputRef}
                         type="number" 
                         min="1" 
                         value={orderQuantity} 
                         onChange={(e) => setOrderQuantity(Math.max(1, Number(e.target.value) || 1))}
+                        onFocus={(e) => e.target.select()}
                         className="mono-nums" 
                         style={{ fontSize: '1.2rem', fontWeight: 600, width: '60px', textAlign: 'center', background: 'transparent', border: 'none', borderBottom: '2px solid var(--border-color)', color: 'var(--text-primary)' }} 
                       />

@@ -45,8 +45,8 @@ setInterval(() => {
       });
       
       history.push(newPoint);
-      // keep only last 365 points
-      if (history.length > 365) history.shift();
+      // keep only last 2000 points (prevents 1Y data from being purged too quickly by 3s ticks)
+      if (history.length > 2000) history.shift();
       newState[productId] = history;
     }
   });

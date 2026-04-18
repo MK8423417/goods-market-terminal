@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { useMarketSimulator } from '../hooks/useMarketSimulator';
 import { PRODUCTS, SUPPLIERS } from '../data/mockData';
 import { useLanguage } from '../context/LanguageContext';
@@ -15,6 +15,14 @@ export default function MyBusiness() {
   const [showOrderModal, setShowOrderModal] = useState<string | null>(null);
   const [orderQuantity, setOrderQuantity] = useState<number | ''>(1);
   const [orderSuccess, setOrderSuccess] = useState(false);
+  const quantityInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (showOrderModal && quantityInputRef.current) {
+      quantityInputRef.current.focus();
+      quantityInputRef.current.select();
+    }
+  }, [showOrderModal]);
 
   // Combine products with their current valuation and inventory counts
   const businessAssets = useMemo(() => {
@@ -329,6 +337,7 @@ export default function MyBusiness() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                       <button onClick={() => setOrderQuantity(Math.max(1, (Number(orderQuantity) || 1) - 1))} style={{ width: '32px', height: '32px', borderRadius: '16px', border: '1px solid var(--border-color)', background: 'var(--bg-color)', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--text-primary)' }}>-</button>
                       <input 
+                        ref={quantityInputRef}
                         type="number" 
                         min="1" 
                         value={orderQuantity} 

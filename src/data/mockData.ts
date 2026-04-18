@@ -22,20 +22,20 @@ export interface PricePoint {
 }
 
 export const SUPPLIERS: Record<string, Supplier> = {
-  mercadona: { id: 'mercadona', name: 'Mercadona', color: '#00824E', logo: 'https://icon.horse/icon/mercadona.es' },
-  dia: { id: 'dia', name: 'Dia', color: '#D6002A', logo: 'https://icon.horse/icon/dia.es' },
-  lidl: { id: 'lidl', name: 'Lidl', color: '#0050AA', logo: 'https://icon.horse/icon/lidl.com' },
-  carrefour: { id: 'carrefour', name: 'Carrefour', color: '#004C99', logo: 'https://icon.horse/icon/carrefour.es' },
-  alcampo: { id: 'alcampo', name: 'Alcampo', color: '#E30613', logo: 'https://icon.horse/icon/alcampo.es' },
-  aldi: { id: 'aldi', name: 'Aldi', color: '#0000FF', logo: 'https://icon.horse/icon/aldi.es' },
-  eroski: { id: 'eroski', name: 'Eroski', color: '#0054A6', logo: 'https://icon.horse/icon/eroski.es' },
-  consum: { id: 'consum', name: 'Consum', color: '#F18E00', logo: 'https://icon.horse/icon/consum.es' },
-  ahorramas: { id: 'ahorramas', name: 'Ahorramas', color: '#FFD100', logo: 'https://icon.horse/icon/ahorramas.com' },
-  coviran: { id: 'coviran', name: 'Coviran', color: '#009739', logo: 'https://icon.horse/icon/coviran.es' },
-  froiz: { id: 'froiz', name: 'Froiz', color: '#ED1C24', logo: 'https://icon.horse/icon/froiz.com' },
-  bonpreu: { id: 'bonpreu', name: 'Bonpreu', color: '#E85B22', logo: 'https://icon.horse/icon/bonpreu.cat' },
-  gadis: { id: 'gadis', name: 'Gadis', color: '#005BBB', logo: 'https://icon.horse/icon/gadis.es' },
-  hipercor: { id: 'hipercor', name: 'Hipercor', color: '#008C45', logo: 'https://icon.horse/icon/elcorteingles.es' }
+  mercadona: { id: 'mercadona', name: 'Mercadona', color: '#00824E', logo: 'https://www.google.com/s2/favicons?domain=mercadona.es&sz=128' },
+  dia: { id: 'dia', name: 'Dia', color: '#D6002A', logo: 'https://www.google.com/s2/favicons?domain=dia.es&sz=128' },
+  lidl: { id: 'lidl', name: 'Lidl', color: '#0050AA', logo: 'https://www.google.com/s2/favicons?domain=lidl.es&sz=128' },
+  carrefour: { id: 'carrefour', name: 'Carrefour', color: '#004C99', logo: 'https://www.google.com/s2/favicons?domain=carrefour.es&sz=128' },
+  alcampo: { id: 'alcampo', name: 'Alcampo', color: '#E30613', logo: 'https://www.google.com/s2/favicons?domain=alcampo.es&sz=128' },
+  aldi: { id: 'aldi', name: 'Aldi', color: '#0000FF', logo: 'https://www.google.com/s2/favicons?domain=aldi.es&sz=128' },
+  eroski: { id: 'eroski', name: 'Eroski', color: '#0054A6', logo: 'https://www.google.com/s2/favicons?domain=eroski.es&sz=128' },
+  consum: { id: 'consum', name: 'Consum', color: '#F18E00', logo: 'https://www.google.com/s2/favicons?domain=consum.es&sz=128' },
+  ahorramas: { id: 'ahorramas', name: 'Ahorramas', color: '#FFD100', logo: 'https://www.google.com/s2/favicons?domain=ahorramas.com&sz=128' },
+  coviran: { id: 'coviran', name: 'Coviran', color: '#009739', logo: 'https://www.google.com/s2/favicons?domain=coviran.es&sz=128' },
+  froiz: { id: 'froiz', name: 'Froiz', color: '#ED1C24', logo: 'https://www.google.com/s2/favicons?domain=froiz.com&sz=128' },
+  bonpreu: { id: 'bonpreu', name: 'Bonpreu', color: '#E85B22', logo: 'https://www.google.com/s2/favicons?domain=bonpreuesclat.cat&sz=128' },
+  gadis: { id: 'gadis', name: 'Gadis', color: '#005BBB', logo: 'https://www.google.com/s2/favicons?domain=gadis.es&sz=128' },
+  hipercor: { id: 'hipercor', name: 'Hipercor', color: '#008C45', logo: 'https://www.google.com/s2/favicons?domain=hipercor.es&sz=128' }
 };
 
 export const BASE_PRODUCTS: Product[] = [
@@ -94,34 +94,42 @@ export function generateHistoricPrices(productId: string): PricePoint[] {
   const points: PricePoint[] = [];
   const now = Date.now();
   const dayMs = 24 * 60 * 60 * 1000;
+  const fifteenMinMs = 15 * 60 * 1000;
   
-  // Random deviations for each supplier
   const supplierMods: Record<string, number> = {};
   Object.keys(SUPPLIERS).forEach(sId => {
-    supplierMods[sId] = 0.9 + (Math.random() * 0.2); // 0.9 to 1.1
+    supplierMods[sId] = 0.9 + (Math.random() * 0.2);
   });
 
-  // Seed fixed starting points
   let currentPrices: Record<string, number> = {};
   Object.keys(SUPPLIERS).forEach(sId => {
     currentPrices[sId] = prod.basePrice * supplierMods[sId];
   });
 
-  // Generate 365 days of data
-  for (let i = 365; i >= 0; i--) {
+  // 1. Generate roughly ~365 days of "daily" points (past 1 year to past 24h)
+  // We'll skip the last 24h as we'll do high-res for that.
+  for (let i = 365; i >= 1; i--) {
     const time = now - (i * dayMs);
     const point: PricePoint = { time };
-    
     Object.keys(SUPPLIERS).forEach(sId => {
-      // Small daily random walk (variance 0.01)
       const walk = 1 + (Math.random() * 0.04 - 0.02);
-      let newPrice = currentPrices[sId] * walk;
-      // Cap at reasonable min/max
-      newPrice = Math.max(prod.basePrice * 0.8, Math.min(prod.basePrice * 1.5, newPrice));
-      currentPrices[sId] = newPrice;
-      point[sId] = Number(newPrice.toFixed(2));
+      currentPrices[sId] = Math.max(prod.basePrice * 0.8, Math.min(prod.basePrice * 1.5, currentPrices[sId] * walk));
+      point[sId] = Number(currentPrices[sId].toFixed(2));
     });
+    points.push(point);
+  }
 
+  // 2. Generate ~24 hours of "high-res" points (every 15 mins)
+  const highResPoints = (24 * 60) / 15;
+  for (let i = highResPoints; i >= 0; i--) {
+    const time = now - (i * fifteenMinMs);
+    const point: PricePoint = { time };
+    Object.keys(SUPPLIERS).forEach(sId => {
+      // Much smaller walk for short intervals
+      const walk = 1 + (Math.random() * 0.004 - 0.002);
+      currentPrices[sId] = Math.max(prod.basePrice * 0.8, Math.min(prod.basePrice * 1.5, currentPrices[sId] * walk));
+      point[sId] = Number(currentPrices[sId].toFixed(2));
+    });
     points.push(point);
   }
   
