@@ -8,8 +8,22 @@ import Alerts from './pages/Alerts';
 import MyBusiness from './pages/MyBusiness';
 import { LanguageProvider, useLanguage } from './context/LanguageContext';
 
-function Navigation({ theme, toggleTheme }: { theme: 'light'|'dark', toggleTheme: () => void }) {
-  const { t, locale, toggleLanguage } = useLanguage();
+function GlobalControls({ theme, toggleTheme }: { theme: 'light'|'dark', toggleTheme: () => void }) {
+  const { locale, toggleLanguage } = useLanguage();
+  return (
+    <div style={{ position: 'fixed', top: '16px', right: '16px', display: 'flex', gap: '8px', zIndex: 1000 }}>
+      <button onClick={toggleTheme} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-primary)', padding: 0 }}>
+        {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+      </button>
+      <button onClick={toggleLanguage} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '0.75rem', fontWeight: 'bold', padding: 0 }}>
+        {locale.toUpperCase()}
+      </button>
+    </div>
+  );
+}
+
+function Navigation() {
+  const { t } = useLanguage();
   return (
     <nav className="bottom-nav">
       <NavLink to="/" end className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
@@ -28,14 +42,6 @@ function Navigation({ theme, toggleTheme }: { theme: 'light'|'dark', toggleTheme
         <Store size={22} />
         <span>{t('Business')}</span>
       </NavLink>
-      <div className="nav-item" onClick={toggleTheme} style={{ cursor: 'pointer' }}>
-        {theme === 'light' ? <Moon size={22} /> : <Sun size={22} />}
-        <span>{t('Theme')}</span>
-      </div>
-      <div className="nav-item" onClick={toggleLanguage} style={{ cursor: 'pointer' }}>
-        <Globe size={22} />
-        <span>{locale.toUpperCase()}</span>
-      </div>
     </nav>
   );
 }
@@ -69,7 +75,8 @@ function AppContent() {
           <Route path="/alerts" element={<Alerts />} />
           <Route path="/business" element={<MyBusiness />} />
         </Routes>
-        <Navigation theme={theme} toggleTheme={toggleTheme} />
+        <Navigation />
+        <GlobalControls theme={theme} toggleTheme={toggleTheme} />
       </div>
     </Router>
   );

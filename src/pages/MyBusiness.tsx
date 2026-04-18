@@ -1,17 +1,18 @@
 import React, { useMemo, useState } from 'react';
 import { useMarketSimulator } from '../hooks/useMarketSimulator';
-import { BASE_PRODUCTS } from '../data/mockData';
+import { PRODUCTS } from '../data/mockData';
 import { useLanguage } from '../context/LanguageContext';
 
 export default function MyBusiness() {
   const { t } = useLanguage();
-  const { market, inventory, updateInventory } = useMarketSimulator();
+  const { market, inventory, demand, updateDemand, favorites, toggleFavorite } = useMarketSimulator();
   const [showAdd, setShowAdd] = useState(false);
+  const [addSearchTerm, setAddSearchTerm] = useState('');
 
   // Combine products with their current valuation and inventory counts
   const businessAssets = useMemo(() => {
-    return BASE_PRODUCTS
-      .filter(p => inventory[p.id] && inventory[p.id] > 0)
+    return PRODUCTS
+      .filter(p => (inventory[p.id] && inventory[p.id] > 0) || (demand[p.id] && demand[p.id] > 0))
       .map(p => {
         const prices = market[p.id];
         let currentLowest = p.basePrice;
@@ -21,17 +22,19 @@ export default function MyBusiness() {
           if (vals.length > 0) currentLowest = Math.min(...vals);
         }
         const count = inventory[p.id] || 0;
+        const target = demand[p.id] || 0;
         const totalValue = count * currentLowest;
 
         return {
           ...p,
           currentLowest,
           count,
+          target,
           totalValue
         };
       })
       .sort((a, b) => b.totalValue - a.totalValue);
-  }, [market, inventory]);
+  }, [market, inventory, demand]);
 
   const totalPortfolioValue = businessAssets.reduce((sum, asset) => sum + asset.totalValue, 0);
 
@@ -53,17 +56,41 @@ export default function MyBusiness() {
         </div>
 
         {showAdd && (
-          <div className="pill-scroll" style={{ marginTop: '16px', paddingBottom: '4px' }}>
-            {BASE_PRODUCTS.filter(p => !inventory[p.id] || inventory[p.id] === 0).map(p => (
-              <button 
-                key={p.id}
-                onClick={() => { updateInventory(p.id, 1); setShowAdd(false); }}
-                style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '6px 12px', borderRadius: '16px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', whiteSpace: 'nowrap', color: 'var(--text-primary)' }}
-              >
-                <span>{p.icon}</span>
-                <span style={{ fontWeight: 500, fontSize: '0.85rem' }}>{t(p.name)}</span>
-              </button>
-            ))}
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={() => { setShowAdd(false); setAddSearchTerm(''); }}>
+            <div className="card" style={{ width: '100%', maxWidth: '500px', maxHeight: '80vh', display: 'flex', flexDirection: 'column', padding: '24px', margin: 0 }} onClick={e => e.stopPropagation()}>
+              <h2 style={{ marginBottom: '20px', fontSize: '1.3rem' }}>{t('Add Product to Business')}</h2>
+              <input 
+                autoFocus
+                type="text" 
+                placeholder={t("Search products...")} 
+                value={addSearchTerm}
+                onChange={e => setAddSearchTerm(e.target.value)}
+                style={{ padding: '16px', fontSize: '1.2rem', marginBottom: '16px', borderRadius: '12px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', width: '100%', boxSizing: 'border-box' }}
+              />
+              <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', paddingRight: '4px' }}>
+                {PRODUCTS
+                  .filter(p => (!inventory[p.id] || inventory[p.id] === 0) && (!demand[p.id] || demand[p.id] === 0))
+                  .filter(p => p.name.toLowerCase().includes(addSearchTerm.toLowerCase()) || t(p.name).toLowerCase().includes(addSearchTerm.toLowerCase()))
+                  .map(p => (
+                  <button 
+                    key={p.id}
+                    onClick={() => { 
+                      updateDemand(p.id, 1); 
+                      if (!favorites.includes(p.id)) toggleFavorite(p.id);
+                      setShowAdd(false); 
+                      setAddSearchTerm('');
+                    }}
+                    style={{ background: 'var(--bg-color)', border: '1px solid var(--border-color)', padding: '12px 16px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '16px', cursor: 'pointer', color: 'var(--text-primary)', textAlign: 'left', width: '100%', transition: 'background 0.2s' }}
+                  >
+                    <span style={{ fontSize: '1.8rem' }}>{p.icon}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '4px' }}>{t(p.name)}</div>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{t(p.category)}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </header>
@@ -77,8 +104,9 @@ export default function MyBusiness() {
           <table className="data-table" style={{ margin: 0 }}>
             <thead>
               <tr style={{ background: 'var(--bg-secondary)' }}>
-                <th style={{ width: '40%' }}>{t('Product')}</th>
-                <th style={{ width: '20%', textAlign: 'right' }}>{t('Stock Count')}</th>
+                <th style={{ width: '30%' }}>{t('Product')}</th>
+                <th style={{ width: '15%', textAlign: 'right' }}>{t('Target Demand')}</th>
+                <th style={{ width: '15%', textAlign: 'right' }}>{t('Stock Count')}</th>
                 <th style={{ width: '20%', textAlign: 'right' }}>{t('Current Price')}</th>
                 <th style={{ width: '20%', textAlign: 'right' }}>{t('Total Value')}</th>
               </tr>
@@ -99,10 +127,11 @@ export default function MyBusiness() {
                     <input 
                       type="number"
                       className="mono-nums"
-                      value={asset.count || ''}
-                      onChange={(e) => updateInventory(asset.id, Number(e.target.value) || 0)}
+                      value={asset.target || ''}
+                      onChange={(e) => updateDemand(asset.id, Number(e.target.value) || 0)}
+                      placeholder="0"
                       style={{ 
-                        width: '80px', 
+                        width: '70px', 
                         textAlign: 'right', 
                         padding: '6px', 
                         borderRadius: '6px', 
@@ -111,6 +140,19 @@ export default function MyBusiness() {
                         color: 'var(--text-primary)'
                       }}
                     />
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <span 
+                      className="mono-nums"
+                      style={{ 
+                        display: 'inline-block',
+                        width: '70px', 
+                        textAlign: 'right', 
+                        padding: '6px', 
+                        color: asset.count >= asset.target && asset.target > 0 ? 'var(--color-up)' : 'var(--text-primary)',
+                        fontWeight: asset.count >= asset.target && asset.target > 0 ? 'bold' : 'normal'
+                      }}
+                    >{asset.count}</span>
                   </td>
                   <td className="mono-nums" style={{ textAlign: 'right' }}>{asset.currentLowest.toFixed(2)}€</td>
                   <td className="mono-nums" style={{ textAlign: 'right', fontWeight: 'bold' }}>{asset.totalValue.toFixed(2)}€</td>
