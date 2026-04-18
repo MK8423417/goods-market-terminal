@@ -6,7 +6,7 @@ import { Trash2, ChevronUp, ChevronDown, CheckCircle as LucideCheckCircle } from
 
 export default function MyBusiness() {
   const { t } = useLanguage();
-  const { market, inventory, demand, updateDemand, removeDemand, favorites, toggleFavorite, placeOrder } = useMarketSimulator();
+  const { market, orders, inventory, demand, updateDemand, removeDemand, favorites, toggleFavorite, placeOrder } = useMarketSimulator();
   const [showAdd, setShowAdd] = useState(false);
   const [addSearchTerm, setAddSearchTerm] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>({ key: 'totalValue', direction: 'desc' });
@@ -48,13 +48,26 @@ export default function MyBusiness() {
         const target = demand[p.id] || 0;
         const totalValue = count * (lowestPrice || p.basePrice);
 
+        // Calculate historical buy prices
+        const productOrders = orders.filter(o => o.productId === p.id);
+        const lastBuyPrice = productOrders.length > 0 ? productOrders[0].price : null;
+        
+        let avgBuyPrice = null;
+        if (productOrders.length > 0) {
+          const totalSpent = productOrders.reduce((sum, o) => sum + (o.price * o.quantity), 0);
+          const totalQty = productOrders.reduce((sum, o) => sum + o.quantity, 0);
+          avgBuyPrice = totalSpent / totalQty;
+        }
+
         return {
           ...p,
           currentLowest: lowestPrice,
           lowestSupplier: SUPPLIERS[lowestSupplierId],
           count,
           target,
-          totalValue
+          totalValue,
+          avgBuyPrice,
+          lastBuyPrice
         };
       });
 
@@ -83,7 +96,7 @@ export default function MyBusiness() {
     }
 
     return assets;
-  }, [market, inventory, demand, sortConfig, t]);
+  }, [market, inventory, orders, demand, sortConfig, t]);
 
   const requestSort = (key: string) => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -153,7 +166,26 @@ export default function MyBusiness() {
               <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', paddingRight: '4px' }}>
                 {PRODUCTS
                   .filter(p => (!inventory[p.id] || inventory[p.id] === 0) && demand[p.id] === undefined)
-                  .filter(p => p.name.toLowerCase().includes(addSearchTerm.toLowerCase()) || t(p.name).toLowerCase().includes(addSearchTerm.toLowerCase()))
+                  .filter(p => {
+                    const s = addSearchTerm.toLowerCase();
+                    const nameMatch = p.name.toLowerCase().includes(s) || t(p.name).toLowerCase().includes(s);
+                    
+                    // Also check if this supplier is current lowest for this product (reusing logic from top of component)
+                    const history = market[p.id] || [];
+                    let lowestSupplierName = "";
+                    if (history.length > 0) {
+                      const latest = history[history.length - 1];
+                      let lowP = Infinity;
+                      let lowSId = "";
+                      Object.keys(SUPPLIERS).forEach(id => {
+                        if (latest[id] < lowP) { lowP = latest[id]; lowSId = id; }
+                      });
+                      lowestSupplierName = SUPPLIERS[lowSId]?.name || "";
+                    }
+                    
+                    const supplierMatch = lowestSupplierName.toLowerCase().includes(s);
+                    return nameMatch || supplierMatch;
+                  })
                   .map(p => (
                   <button 
                     key={p.id}
@@ -187,29 +219,39 @@ export default function MyBusiness() {
           <table className="data-table" style={{ margin: 0 }}>
             <thead>
               <tr style={{ background: 'var(--bg-secondary)' }}>
-                <th style={{ width: '30%', cursor: 'pointer' }} onClick={() => requestSort('name')}>
+                <th style={{ width: '22%', cursor: 'pointer' }} onClick={() => requestSort('name')}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     {t('Product')} {getSortIcon('name')}
                   </div>
                 </th>
-                <th style={{ width: '15%', textAlign: 'right', cursor: 'pointer' }} onClick={() => requestSort('target')}>
+                <th style={{ width: '10%', textAlign: 'right', cursor: 'pointer' }} onClick={() => requestSort('target')}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-                    {t('Target Demand')} {getSortIcon('target')}
+                    {t('Target')} {getSortIcon('target')}
                   </div>
                 </th>
-                <th style={{ width: '15%', textAlign: 'right', cursor: 'pointer' }} onClick={() => requestSort('count')}>
+                <th style={{ width: '10%', textAlign: 'right', cursor: 'pointer' }} onClick={() => requestSort('count')}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-                    {t('Stock Count')} {getSortIcon('count')}
+                    {t('Stock')} {getSortIcon('count')}
                   </div>
                 </th>
-                <th style={{ width: '15%', textAlign: 'right', cursor: 'pointer' }} onClick={() => requestSort('currentLowest')}>
+                <th style={{ width: '12%', textAlign: 'right', cursor: 'pointer' }} onClick={() => requestSort('avgBuyPrice')}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-                    {t('Current Price')} {getSortIcon('currentLowest')}
+                    {t('Avg Buy')} {getSortIcon('avgBuyPrice')}
                   </div>
                 </th>
-                <th style={{ width: '15%', textAlign: 'right', cursor: 'pointer' }} onClick={() => requestSort('totalValue')}>
+                <th style={{ width: '12%', textAlign: 'right', cursor: 'pointer' }} onClick={() => requestSort('lastBuyPrice')}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-                    {t('Total Value')} {getSortIcon('totalValue')}
+                    {t('Last Buy')} {getSortIcon('lastBuyPrice')}
+                  </div>
+                </th>
+                <th style={{ width: '12%', textAlign: 'right', cursor: 'pointer' }} onClick={() => requestSort('currentLowest')}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                    {t('Live Price')} {getSortIcon('currentLowest')}
+                  </div>
+                </th>
+                <th style={{ width: '12%', textAlign: 'right', cursor: 'pointer' }} onClick={() => requestSort('totalValue')}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                    {t('Value')} {getSortIcon('totalValue')}
                   </div>
                 </th>
                 <th style={{ width: '10%', textAlign: 'right' }}>{t('Actions')}</th>
@@ -258,6 +300,12 @@ export default function MyBusiness() {
                         fontWeight: asset.count >= (Number(asset.target) || 0) && (Number(asset.target) || 0) > 0 ? 'bold' : 'normal'
                       }}
                     >{asset.count}</span>
+                  </td>
+                  <td className="mono-nums" style={{ textAlign: 'right', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                    {asset.avgBuyPrice ? `${asset.avgBuyPrice.toFixed(2)}€` : '—'}
+                  </td>
+                  <td className="mono-nums" style={{ textAlign: 'right', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                    {asset.lastBuyPrice ? `${asset.lastBuyPrice.toFixed(2)}€` : '—'}
                   </td>
                   <td className="mono-nums" style={{ textAlign: 'right' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>

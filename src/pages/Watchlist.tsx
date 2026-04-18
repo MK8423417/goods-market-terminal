@@ -3,8 +3,7 @@ import { useMarketSimulator } from '../hooks/useMarketSimulator';
 import { PRODUCTS, CATEGORIES, SUPPLIERS } from '../data/mockData';
 import { Link, useNavigate } from 'react-router-dom';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
-import { Search, Star, ExternalLink, Activity } from 'lucide-react';
-import { default as LucideCheckCircle } from 'lucide-react/dist/esm/icons/check-circle';
+import { Search, Star, ExternalLink, Activity, CheckCircle as LucideCheckCircle } from 'lucide-react';
 import { TableVirtuoso } from 'react-virtuoso';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -70,7 +69,12 @@ function Watchlist() {
   const filtered = processedProducts.filter(p => {
     if (filter === 'Favorites' && !favorites.includes(p.id)) return false;
     if (filter !== 'All' && filter !== 'Favorites' && p.category !== filter) return false;
-    if (search && !t(p.name).toLowerCase().includes(search.toLowerCase())) return false;
+    if (search) {
+      const s = search.toLowerCase();
+      const nameMatch = t(p.name).toLowerCase().includes(s);
+      const supplierMatch = p.lowestSupplier?.name?.toLowerCase().includes(s);
+      if (!nameMatch && !supplierMatch) return false;
+    }
     return true;
   });
 

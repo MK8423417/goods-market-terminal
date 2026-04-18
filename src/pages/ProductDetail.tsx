@@ -3,11 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useMarketSimulator } from '../hooks/useMarketSimulator';
 import { PRODUCTS, SUPPLIERS } from '../data/mockData';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { default as LucideChevronLeft } from 'lucide-react/dist/esm/icons/chevron-left';
-import { default as LucideBell } from 'lucide-react/dist/esm/icons/bell';
-import { default as LucideCheckCircle } from 'lucide-react/dist/esm/icons/check-circle';
-import { default as LucideEye } from 'lucide-react/dist/esm/icons/eye';
-import { default as LucideEyeOff } from 'lucide-react/dist/esm/icons/eye-off';
+import { 
+  ChevronLeft as LucideChevronLeft, 
+  Bell as LucideBell, 
+  CheckCircle as LucideCheckCircle, 
+  Eye as LucideEye, 
+  EyeOff as LucideEyeOff 
+} from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 
 function ProductDetail() {
@@ -87,13 +89,35 @@ function ProductDetail() {
     return d.toLocaleDateString([], { day: '2-digit', month: '2-digit' });
   };
 
-  const toggleSupplierVisibility = (sId: string) => {
+  const toggleSupplierVisibility = (sId: string, event?: React.MouseEvent) => {
+    if (event) event.stopPropagation();
+    
     setVisibleSuppliers(prev => {
       const next = new Set(prev);
-      if (next.has(sId)) next.delete(sId);
-      else next.add(sId);
+      const allIds = Object.keys(SUPPLIERS);
+      
+      // If all are currently selected, isolate the one clicked
+      if (next.size === allIds.length) {
+        next.clear();
+        next.add(sId);
+      } else {
+        // Otherwise toggle
+        if (next.has(sId)) {
+          next.delete(sId);
+          // If we emptied it, reset to all
+          if (next.size === 0) {
+            return new Set(allIds);
+          }
+        } else {
+          next.add(sId);
+        }
+      }
       return next;
     });
+  };
+
+  const resetVisibility = () => {
+    setVisibleSuppliers(new Set(Object.keys(SUPPLIERS)));
   };
 
   const handleBuy = () => {
@@ -147,14 +171,25 @@ function ProductDetail() {
         const min = sorted[0];
         const max = sorted[sorted.length - 1];
         
-        // Calculate median
+        // Calculate global median
         const values = sorted.map(s => s.value as number);
-        let median = 0;
         const mid = Math.floor(values.length / 2);
-        if (values.length % 2 === 0) {
-          median = (values[mid - 1] + values[mid]) / 2;
-        } else {
-          median = values[mid];
+        const median = values.length % 2 === 0 ? (values[mid - 1] + values[mid]) / 2 : values[mid];
+
+        // Calculate Selected Median if custom selection is active
+        const totalSuppliersCount = Object.keys(SUPPLIERS).length;
+        const isCustomSelection = visibleSuppliers.size > 0 && visibleSuppliers.size < totalSuppliersCount;
+        
+        let selectedMedian = null;
+        if (isCustomSelection) {
+          const selectedPrices = actualPrices.filter((p: any) => visibleSuppliers.has(p.dataKey));
+          if (selectedPrices.length > 0) {
+            const selValues = selectedPrices.map((s: any) => s.value as number).sort((a, b) => a - b);
+            const slMid = Math.floor(selValues.length / 2);
+            selectedMedian = selValues.length % 2 === 0 
+              ? (selValues[slMid - 1] + selValues[slMid]) / 2 
+              : selValues[slMid];
+          }
         }
 
         return (
@@ -167,7 +202,7 @@ function ProductDetail() {
             background: 'var(--bg-color)',
             opacity: 0.95
           }}>
-            <div style={{ color: 'var(--text-secondary)', marginBottom: '8px', borderBottom: '1px solid var(--border-color)', pb: '4px' }}>
+            <div style={{ color: 'var(--text-secondary)', marginBottom: '8px', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>
               {new Date(label).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </div>
             
@@ -181,10 +216,17 @@ function ProductDetail() {
               <span className="mono-nums">{min.value.toFixed(2)}€ ({min.name})</span>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', mt: '4px', borderTop: '1px solid var(--border-color)', pt: '4px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px', borderTop: '1px solid var(--border-color)', paddingTop: '4px' }}>
               <span style={{ color: 'var(--text-secondary)' }}>Median:</span>
               <span className="mono-nums" style={{ fontWeight: 'bold' }}>{median.toFixed(2)}€</span>
             </div>
+
+            {selectedMedian !== null && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
+                <span style={{ color: 'var(--color-up)', fontSize: '0.75rem', fontWeight: 600 }}>Sel. Median:</span>
+                <span className="mono-nums" style={{ fontWeight: 'bold', color: 'var(--color-up)' }}>{selectedMedian.toFixed(2)}€</span>
+              </div>
+            )}
           </div>
         );
       }
@@ -302,9 +344,13 @@ function ProductDetail() {
                 isAnimationActive={false}
               />
             ) : (
-              Object.values(SUPPLIERS).filter(s => visibleSuppliers.has(s.id)).map(s => {
+              Object.values(SUPPLIERS).map(s => {
+                const isSelected = visibleSuppliers.has(s.id);
+                const isAnySelected = visibleSuppliers.size < Object.keys(SUPPLIERS).length;
                 const isHovered = hoveredSupplierId === s.id;
-                const isFaded = hoveredSupplierId !== null && hoveredSupplierId !== s.id;
+                
+                // If any specific selection is active, non-selected go grey
+                const isFaded = isAnySelected ? !isSelected : (hoveredSupplierId !== null && !isHovered);
                 
                 return (
                   <Line 
@@ -313,8 +359,8 @@ function ProductDetail() {
                     dataKey={s.id} 
                     name={s.name}
                     stroke={isFaded ? 'var(--text-secondary)' : s.color} 
-                    strokeOpacity={isFaded ? 0.3 : 1}
-                    strokeWidth={isHovered ? 4 : (s.id === lowestSupplierId && !hoveredSupplierId ? 3 : 1.5)} 
+                    strokeOpacity={isFaded ? 0.2 : 1}
+                    strokeWidth={isHovered ? 4 : (isSelected ? 2.5 : 1)} 
                     dot={false}
                     isAnimationActive={false}
                   />
@@ -345,36 +391,58 @@ function ProductDetail() {
 
       {/* Table */}
       <div style={{ marginBottom: '32px' }}>
-        <h3 style={{ marginBottom: '16px', fontSize: '1.1rem' }}>{t('Market Comparison')}</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h3 style={{ fontSize: '1.1rem', margin: 0 }}>{t('Market Comparison')}</h3>
+          <button 
+            onClick={resetVisibility}
+            style={{ 
+              background: 'var(--bg-secondary)', 
+              border: '1px solid var(--border-color)', 
+              borderRadius: '8px', 
+              padding: '6px 12px', 
+              fontSize: '0.8rem', 
+              color: 'var(--text-primary)',
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+          >
+            {t('Reset View')}
+          </button>
+        </div>
         <div style={{ background: 'var(--bg-color)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
           {Object.values(SUPPLIERS).sort((a, b) => providerCurrentPrices[a.id] - providerCurrentPrices[b.id]).map((s, idx) => {
             const pPrice = providerCurrentPrices[s.id];
             const yPrice = yesterdayPoint[s.id];
             const change = ((pPrice - yPrice) / yPrice) * 100;
             const isUp = change > 0;
+            const isSelected = visibleSuppliers.has(s.id);
+            const isAnySelected = visibleSuppliers.size < Object.keys(SUPPLIERS).length;
             
             return (
               <div 
                 key={s.id} 
                 onMouseEnter={() => setHoveredSupplierId(s.id)}
                 onMouseLeave={() => setHoveredSupplierId(null)}
+                onClick={() => toggleSupplierVisibility(s.id)}
                 style={{ 
                   display: 'flex', 
                   justifyContent: 'space-between', 
                   padding: '16px', 
                   borderBottom: idx < Object.keys(SUPPLIERS).length - 1 ? '1px solid var(--border-color)' : 'none',
-                  background: hoveredSupplierId === s.id ? 'var(--bg-hover)' : 'transparent',
-                  transition: 'background 0.2s'
+                  background: isSelected && isAnySelected ? 'rgba(var(--color-up-rgb), 0.1)' : (hoveredSupplierId === s.id ? 'var(--bg-hover)' : 'transparent'),
+                  cursor: 'pointer',
+                  transition: 'background 0.2s',
+                  opacity: !isSelected && isAnySelected ? 0.6 : 1
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <button 
-                    onClick={() => toggleSupplierVisibility(s.id)}
+                    onClick={(e) => toggleSupplierVisibility(s.id, e)}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                   >
-                    {visibleSuppliers.has(s.id) 
-                      ? <LucideEye size={18} color="var(--text-secondary)" /> 
-                      : <LucideEyeOff size={18} color="var(--border-color)" />}
+                    {isSelected && isAnySelected
+                      ? <LucideEye size={18} color="var(--color-up)" /> 
+                      : (isAnySelected ? <LucideEyeOff size={18} color="var(--border-color)" /> : <LucideEye size={18} color="var(--text-secondary)" />)}
                   </button>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: visibleSuppliers.has(s.id) ? 1 : 0.4, minWidth: 0, overflow: 'hidden' }}>
                     {s.logo ? (
