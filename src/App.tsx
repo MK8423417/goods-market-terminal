@@ -1,29 +1,28 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, NavLink, useLocation } from 'react-router-dom';
-import { Home, LineChart, LayoutList, Bell, Globe, Moon, Sun, Store } from 'lucide-react';
+import { BrowserRouter as Router, Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom';
+import { Home, LayoutList, Bell, Moon, Sun, Store, User } from 'lucide-react';
 import Watchlist from './pages/Watchlist';
 import ProductDetail from './pages/ProductDetail';
 import Orders from './pages/Orders';
 import Alerts from './pages/Alerts';
 import MyBusiness from './pages/MyBusiness';
+import Auth from './pages/Auth';
+import Profile from './pages/Profile';
 import { LanguageProvider, useLanguage } from './context/LanguageContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 
-function GlobalControls({ theme, toggleTheme }: { theme: 'light'|'dark', toggleTheme: () => void }) {
-  const { locale, toggleLanguage } = useLanguage();
+
+
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated } = useAuth();
   const location = useLocation();
 
-  if (location.pathname !== '/') return null;
+  if (!isAuthenticated) {
+    return <Navigate to="/auth" state={{ from: location }} replace />;
+  }
 
-  return (
-    <div style={{ position: 'fixed', top: '16px', right: '16px', display: 'flex', gap: '8px', zIndex: 1000 }}>
-      <button onClick={toggleTheme} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-primary)', padding: 0 }}>
-        {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
-      </button>
-      <button onClick={toggleLanguage} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '0.75rem', fontWeight: 'bold', padding: 0 }}>
-        {locale.toUpperCase()}
-      </button>
-    </div>
-  );
+  return <>{children}</>;
 }
 
 function Navigation() {
@@ -46,41 +45,28 @@ function Navigation() {
         <Store size={22} />
         <span>{t('Business')}</span>
       </NavLink>
+      <NavLink to="/profile" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <User size={22} />
+        <span>{t('Profile')}</span>
+      </NavLink>
     </nav>
   );
 }
 
 function AppContent() {
-  const [theme, setTheme] = useState<'light'|'dark'>('light');
-
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme') || 'light';
-    setTheme(savedTheme as any);
-    if (savedTheme === 'dark') document.documentElement.classList.add('dark');
-  }, []);
-
-  const toggleTheme = () => {
-    setTheme(prev => {
-      const next = prev === 'light' ? 'dark' : 'light';
-      localStorage.setItem('theme', next);
-      if (next === 'dark') document.documentElement.classList.add('dark');
-      else document.documentElement.classList.remove('dark');
-      return next;
-    });
-  };
-
   return (
     <Router>
       <div className="container" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
         <Routes>
           <Route path="/" element={<Watchlist />} />
           <Route path="/product/:id" element={<ProductDetail />} />
-          <Route path="/orders" element={<Orders />} />
-          <Route path="/alerts" element={<Alerts />} />
-          <Route path="/business" element={<MyBusiness />} />
+          <Route path="/auth" element={<Auth />} />
+          <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
+          <Route path="/alerts" element={<ProtectedRoute><Alerts /></ProtectedRoute>} />
+          <Route path="/business" element={<ProtectedRoute><MyBusiness /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         </Routes>
         <Navigation />
-        <GlobalControls theme={theme} toggleTheme={toggleTheme} />
       </div>
     </Router>
   );
@@ -88,9 +74,13 @@ function AppContent() {
 
 function App() {
   return (
-    <LanguageProvider>
-      <AppContent />
-    </LanguageProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <LanguageProvider>
+          <AppContent />
+        </LanguageProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 

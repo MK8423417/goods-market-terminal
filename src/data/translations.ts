@@ -64,7 +64,37 @@ export const translations: Record<string, Record<string, string>> = {
     "Cancel": "Cancel",
     "Confirm Demo Order": "Confirm Demo Order",
     "This is a concept demo. No real world fulfilment will occur.": "This is a concept demo. No real world fulfilment will occur.",
-    "Buy": "Buy"
+    "Buy": "Buy",
+    
+    // Orders
+    "Portfolio Activity": "Portfolio Activity",
+    "Total Savings": "Total Savings",
+    "Total Spend": "Total Spend",
+    "Recent Simulated Orders": "Recent Simulated Orders",
+    "No simulated orders yet. Go to Watchlist to mock a purchase.": "No simulated orders yet. Go to Watchlist to mock a purchase.",
+    "Saved ": "Saved ",
+    
+    // My Business
+    "Total Valuation": "Total Valuation",
+    "Add": "Add",
+    "Add Product to Business": "Add Product to Business",
+    "Your inventory is empty. Place orders on the Watchlist to stock up!": "Your inventory is empty. Place orders on the Watchlist to stock up!",
+    "Target": "Target",
+    "Stock": "Stock",
+    "Avg Buy": "Avg Buy",
+    "Last Buy": "Last Buy",
+    "Live Price": "Live Price",
+    "Value": "Value",
+    "Remove this product from your tracked business list?": "Remove this product from your tracked business list?",
+    "Quick Buy Quantity": "Quick Buy Quantity",
+    
+    // Alerts Page
+    "Price Alerts": "Price Alerts",
+    "No active alerts.": "No active alerts.",
+    "Set alerts from product detail pages.": "Set alerts from product detail pages.",
+    "Pause": "Pause",
+    "Resume": "Resume",
+    "Remove": "Remove"
   },
   es: {
     // Navigation
@@ -131,6 +161,28 @@ export const translations: Record<string, Record<string, string>> = {
     "Cancel": "Cancelar",
     "Confirm Demo Order": "Confirmar Pedido de Prueba",
     "This is a concept demo. No real world fulfilment will occur.": "Esto es una demostración. No se realizará ningún pedido real.",
-    "Buy": "Comprar"
+    "Saved ": "Ahorrado ",
+    
+    // Mi Negocio
+    "Total Valuation": "Valoración Total",
+    "Add": "Añadir",
+    "Add Product to Business": "Añadir Producto al Negocio",
+    "Your inventory is empty. Place orders on the Watchlist to stock up!": "Tu inventario está vacío. ¡Realiza pedidos en la lista de seguimiento para abastecerte!",
+    "Target": "Objetivo",
+    "Stock": "Stock",
+    "Avg Buy": "Compra Media",
+    "Last Buy": "Última Compra",
+    "Live Price": "Precio en Vivo",
+    "Value": "Valor",
+    "Remove this product from your tracked business list?": "¿Eliminar este producto de tu lista de seguimiento de negocio?",
+    "Quick Buy Quantity": "Cantidad de Compra Rápida",
+    
+    // Alertas
+    "Price Alerts": "Alertas de Precio",
+    "No active alerts.": "No hay alertas activas.",
+    "Set alerts from product detail pages.": "Configura alertas desde las páginas de detalles del producto.",
+    "Pause": "Pausar",
+    "Resume": "Reanudar",
+    "Remove": "Eliminar"
   }
 };

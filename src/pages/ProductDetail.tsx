@@ -11,12 +11,17 @@ import {
   EyeOff as LucideEyeOff 
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 
 function ProductDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { market, alerts, placeOrder, addAlert, removeAlert } = useMarketSimulator();
   const { t } = useLanguage();
+  const { isAuthenticated, user } = useAuth();
+  
+  const currencySymbol = user?.currency === 'USD' ? '$' : '€';
+  const weightUnit = user?.weightUnit || 'kg';
   
   const product = PRODUCTS.find(p => p.id === id);
   const history = market[id || ''] || [];
@@ -121,6 +126,10 @@ function ProductDetail() {
   };
 
   const handleBuy = () => {
+    if (!isAuthenticated) {
+      navigate('/auth');
+      return;
+    }
     // calculate average market price for savings
     const currentPricesArray = Object.values(providerCurrentPrices);
     const avgPrice = currentPricesArray.reduce((acc, v) => acc + v, 0) / currentPricesArray.length;
@@ -142,6 +151,10 @@ function ProductDetail() {
   };
 
   const openAlertPanel = () => {
+    if (!isAuthenticated) {
+      navigate('/auth');
+      return;
+    }
     setAlertTargetPriceStr((lowestPrice * 0.95).toFixed(2));
     setShowAlertPanel(true);
     setShowOrderPanel(false);
@@ -184,7 +197,7 @@ function ProductDetail() {
         if (isCustomSelection) {
           const selectedPrices = actualPrices.filter((p: any) => visibleSuppliers.has(p.dataKey));
           if (selectedPrices.length > 0) {
-            const selValues = selectedPrices.map((s: any) => s.value as number).sort((a, b) => a - b);
+            const selValues = selectedPrices.map((s: any) => s.value as number).sort((a: number, b: number) => a - b);
             const slMid = Math.floor(selValues.length / 2);
             selectedMedian = selValues.length % 2 === 0 
               ? (selValues[slMid - 1] + selValues[slMid]) / 2 
@@ -208,23 +221,23 @@ function ProductDetail() {
             
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
               <span style={{ color: max.color, fontWeight: 'bold' }}>High:</span>
-              <span className="mono-nums">{max.value.toFixed(2)}€ ({max.name})</span>
+              <span className="mono-nums">{max.value.toFixed(2)}{currencySymbol} ({max.name})</span>
             </div>
             
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
               <span style={{ color: min.color, fontWeight: 'bold' }}>Low:</span>
-              <span className="mono-nums">{min.value.toFixed(2)}€ ({min.name})</span>
+              <span className="mono-nums">{min.value.toFixed(2)}{currencySymbol} ({min.name})</span>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px', borderTop: '1px solid var(--border-color)', paddingTop: '4px' }}>
               <span style={{ color: 'var(--text-secondary)' }}>Median:</span>
-              <span className="mono-nums" style={{ fontWeight: 'bold' }}>{median.toFixed(2)}€</span>
+              <span className="mono-nums" style={{ fontWeight: 'bold' }}>{median.toFixed(2)}{currencySymbol}</span>
             </div>
 
             {selectedMedian !== null && (
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
                 <span style={{ color: 'var(--color-up)', fontSize: '0.75rem', fontWeight: 600 }}>Sel. Median:</span>
-                <span className="mono-nums" style={{ fontWeight: 'bold', color: 'var(--color-up)' }}>{selectedMedian.toFixed(2)}€</span>
+                <span className="mono-nums" style={{ fontWeight: 'bold', color: 'var(--color-up)' }}>{selectedMedian.toFixed(2)}{currencySymbol}</span>
               </div>
             )}
           </div>
@@ -272,9 +285,9 @@ function ProductDetail() {
           </div>
           <div className="mono-nums price-tick-down" style={{ fontSize: '3.5rem', fontWeight: 'bold' }}>
             {lowestPrice.toFixed(2)}
-            <span style={{ fontSize: '1.5rem', color: 'var(--text-secondary)', marginLeft: '4px' }}>€</span>
+            <span style={{ fontSize: '1.5rem', color: 'var(--text-secondary)', marginLeft: '4px' }}>{currencySymbol}</span>
           </div>
-          <div style={{ color: 'var(--text-secondary)' }}>{t('per ')}{product.unit}</div>
+          <div style={{ color: 'var(--text-secondary)' }}>{t('per ')}{weightUnit}</div>
         </div>
   
         {/* Chart Controls */}
@@ -380,7 +393,7 @@ function ProductDetail() {
               <div key={al.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--color-up)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <LucideBell size={16} color="var(--color-up)" />
-                  <span style={{ fontWeight: 500 }}>Target: {al.targetPrice.toFixed(2)}€</span>
+                  <span style={{ fontWeight: 500 }}>Target: {al.targetPrice.toFixed(2)}{currencySymbol}</span>
                 </div>
                 <button onClick={() => removeAlert(al.id)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.8rem', textDecoration: 'underline' }}>{t('Remove')}</button>
               </div>
@@ -476,7 +489,7 @@ function ProductDetail() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
                   <div style={{ textAlign: 'right' }}>
-                    <div className="mono-nums" style={{ fontWeight: 600 }}>{pPrice.toFixed(2)}€</div>
+                    <div className="mono-nums" style={{ fontWeight: 600 }}>{pPrice.toFixed(2)}{currencySymbol}</div>
                     <div className={`mono-nums ${isUp ? 'text-down' : 'text-up'}`} style={{ fontSize: '0.8rem' }}>
                       {isUp ? '+' : ''}{change.toFixed(1)}%
                     </div>
@@ -485,6 +498,10 @@ function ProductDetail() {
                     className="secondary-btn" 
                     style={{ padding: '6px 12px', fontSize: '0.8rem', width: 'auto', marginLeft: '16px' }}
                     onClick={() => {
+                      if (!isAuthenticated) {
+                        navigate('/auth');
+                        return;
+                      }
                       setSelectedSupplierId(s.id);
                       setSelectedPrice(pPrice);
                       setShowOrderPanel(true);
@@ -505,6 +522,10 @@ function ProductDetail() {
         <div style={{ maxWidth: '600px', margin: '0 auto' }}>
           {(!showOrderPanel && !showAlertPanel) ? (
             <button className="buy-btn" onClick={() => {
+              if (!isAuthenticated) {
+                navigate('/auth');
+                return;
+              }
               setSelectedSupplierId(lowestSupplierId);
               setSelectedPrice(lowestPrice);
               setShowOrderPanel(true);
@@ -522,7 +543,7 @@ function ProductDetail() {
               ) : (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-                    <div style={{ fontWeight: 600 }}>{t('Quantity')} ({product.unit}s)</div>
+                    <div style={{ fontWeight: 600 }}>{t('Quantity')} ({weightUnit}s)</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                       <button onClick={() => setOrderQuantity(Math.max(1, orderQuantity - 1))} style={{ width: '32px', height: '32px', borderRadius: '16px', border: '1px solid var(--border-color)', background: 'var(--bg-color)', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--text-primary)' }}>-</button>
                       <input 
@@ -540,7 +561,7 @@ function ProductDetail() {
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
                     <div style={{ fontWeight: 600, fontSize: '1.2rem' }}>{t('Estimated Total')}</div>
-                    <div className="mono-nums" style={{ fontWeight: 600, fontSize: '1.5rem' }}>{((selectedPrice || lowestPrice) * orderQuantity).toFixed(2)}€</div>
+                    <div className="mono-nums" style={{ fontWeight: 600, fontSize: '1.5rem' }}>{((selectedPrice || lowestPrice) * orderQuantity).toFixed(2)}{currencySymbol}</div>
                   </div>
                   <div style={{ display: 'flex', gap: '12px' }}>
                     <button className="secondary-btn" onClick={() => setShowOrderPanel(false)}>{t('Cancel')}</button>
@@ -592,12 +613,12 @@ function ProductDetail() {
                             color: 'var(--text-primary)'
                           }}
                         />
-                        <span style={{ marginLeft: '4px', fontWeight: 'bold' }}>€</span>
+                        <span style={{ marginLeft: '4px', fontWeight: 'bold' }}>{currencySymbol}</span>
                       </div>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                       <span>-{(((lowestPrice - (Number(alertTargetPriceStr)||0)) / lowestPrice) * 100).toFixed(1)}%</span>
-                      <span>{t('Current')}: {lowestPrice.toFixed(2)}€</span>
+                      <span>{t('Current')}: {lowestPrice.toFixed(2)}{currencySymbol}</span>
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '12px' }}>

@@ -6,6 +6,7 @@ import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import { Search, Star, Activity, CheckCircle as LucideCheckCircle, Filter, ChevronDown, Check } from 'lucide-react';
 import { TableVirtuoso } from 'react-virtuoso';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 
 export type SortColumn = 'name' | 'category' | 'lowestPrice' | 'change24h';
 export type SortDir = 'asc' | 'desc';
@@ -41,6 +42,10 @@ function Watchlist() {
   
   const { t } = useLanguage();
   const navigate = useNavigate();
+  const { isAuthenticated, user } = useAuth();
+  
+  const currencySymbol = user?.currency === 'USD' ? '$' : '€';
+  const weightUnit = user?.weightUnit || 'kg';
 
   // Process market data to find current lowest and 24h change
   const processedProducts = PRODUCTS.map(p => {
@@ -136,6 +141,11 @@ function Watchlist() {
   };
 
   const handleQuickBuy = () => {
+    if (!isAuthenticated) {
+      navigate('/auth');
+      return;
+    }
+
     if (!showOrderModal) return;
     const targetProduct = processedProducts.find(p => p.id === showOrderModal);
     if (!targetProduct || !targetProduct.lowestSupplier) return;
@@ -330,16 +340,16 @@ function Watchlist() {
                   </div>
                 </td>
                 <td style={{ width: '15%', color: 'var(--text-secondary)', fontSize: '0.8rem', padding: '4px 16px' }} onClick={() => navigate(`/product/${p.id}`)}>{t(p.category)}</td>
-                <td style={{ width: '10%', color: 'var(--text-secondary)', fontSize: '0.8rem', padding: '4px 16px' }} onClick={() => navigate(`/product/${p.id}`)}>{p.unit}</td>
+                <td style={{ width: '10%', color: 'var(--text-secondary)', fontSize: '0.8rem', padding: '4px 16px' }} onClick={() => navigate(`/product/${p.id}`)}>{weightUnit}</td>
                 <td className="mono-nums" style={{ width: '15%', textAlign: 'right', padding: '4px 16px' }} onClick={() => navigate(`/product/${p.id}`)}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
                     {p.activeAlertTarget && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                         <Activity size={10}/>
-                        {p.activeAlertTarget.toFixed(2)}€
+                        {p.activeAlertTarget.toFixed(2)}{currencySymbol}
                       </div>
                     )}
-                    <span style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{p.currentLowest.toFixed(2)}€</span>
+                    <span style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{p.currentLowest.toFixed(2)}{currencySymbol}</span>
                   </div>
                 </td>
                 <td className={`mono-nums ${isUp ? 'text-down' : 'text-up'}`} style={{ width: '10%', fontWeight: 500, fontSize: '0.8rem', textAlign: 'right', padding: '4px 16px' }} onClick={() => navigate(`/product/${p.id}`)}>
@@ -394,6 +404,10 @@ function Watchlist() {
                     style={{ padding: '4px 8px', fontSize: '0.75rem', width: 'auto', display: 'inline-flex' }}
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (!isAuthenticated) {
+                        navigate('/auth');
+                        return;
+                      }
                       setShowOrderModal(p.id);
                     }}
                   >
@@ -437,7 +451,7 @@ function Watchlist() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
                     <div style={{ fontWeight: 600, fontSize: '1.2rem' }}>{t('Estimated Total')}</div>
                     <div className="mono-nums" style={{ fontWeight: 600, fontSize: '1.5rem' }}>
-                      {((processedProducts.find(p => p.id === showOrderModal)?.currentLowest || 0) * orderQuantity).toFixed(2)}€
+                      {((processedProducts.find(p => p.id === showOrderModal)?.currentLowest || 0) * orderQuantity).toFixed(2)}{currencySymbol}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '12px' }}>

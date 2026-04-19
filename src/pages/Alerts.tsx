@@ -2,21 +2,27 @@ import React from 'react';
 import { useMarketSimulator } from '../hooks/useMarketSimulator';
 import { PRODUCTS, SUPPLIERS } from '../data/mockData';
 import { BellOff } from 'lucide-react';
+import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 
 function Alerts() {
   const { alerts, removeAlert, toggleAlert, market } = useMarketSimulator();
+  const { t } = useLanguage();
+  const { user } = useAuth();
+  
+  const currencySymbol = user?.currency === 'USD' ? '$' : '€';
 
   return (
     <div className="page-content">
       <header style={{ margin: '-20px -20px 20px -20px', paddingBottom: '16px' }}>
-        <h1 style={{ marginBottom: '16px', fontSize: '1.5rem' }}>Price Alerts</h1>
+        <h1 style={{ marginBottom: '16px', fontSize: '1.5rem' }}>{t('Price Alerts')}</h1>
       </header>
 
       {alerts.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-secondary)' }}>
           <BellOff size={48} style={{ margin: '0 auto 16px', opacity: 0.2 }} />
-          <div>No active alerts.</div>
-          <div style={{ fontSize: '0.9rem', marginTop: '8px' }}>Set alerts from product detail pages.</div>
+          <div>{t('No active alerts.')}</div>
+          <div style={{ fontSize: '0.9rem', marginTop: '8px' }}>{t('Set alerts from product detail pages.')}</div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -42,17 +48,17 @@ function Alerts() {
                     <span style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</span>
                   </div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                    Target: <span className="mono-nums" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{a.targetPrice.toFixed(2)}€</span>
+                    {t('Target')}: <span className="mono-nums" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{a.targetPrice.toFixed(2)}{currencySymbol}</span>
                     <span style={{ margin: '0 8px' }}>&bull;</span>
-                    Current: <span className="mono-nums" style={{ color: isTriggered && a.active ? 'var(--color-up)' : 'var(--text-secondary)' }}>{currentPrice.toFixed(2)}€</span>
+                    {t('Current')}: <span className="mono-nums" style={{ color: isTriggered && a.active ? 'var(--color-up)' : 'var(--text-secondary)' }}>{currentPrice.toFixed(2)}{currencySymbol}</span>
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button onClick={() => toggleAlert(a.id)} style={{ padding: '8px 12px', borderRadius: '16px', border: '1px solid var(--border-color)', background: a.active ? 'var(--bg-secondary)' : 'transparent', fontSize: '0.8rem', cursor: 'pointer' }}>
-                    {a.active ? 'Pause' : 'Resume'}
+                    {a.active ? t('Pause') : t('Resume')}
                   </button>
                   <button onClick={() => removeAlert(a.id)} style={{ padding: '8px', color: 'var(--color-down)', background: 'transparent', border: 'none', cursor: 'pointer' }}>
-                    Remove
+                    {t('Remove')}
                   </button>
                 </div>
               </div>

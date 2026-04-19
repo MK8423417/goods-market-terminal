@@ -24,8 +24,21 @@ export interface Alert {
 let sharedMarketState = { ...INITIAL_MARKET_STATE };
 let subscribers: ((state: MarketState) => void)[] = [];
 
-// Tick the prices every 3 seconds for simulation
-setInterval(() => {
+let currentTickSpeed = 3000;
+
+const runSimulation = () => {
+  try {
+    const savedUser = localStorage.getItem('supplytrade_auth_user');
+    if (savedUser) {
+      const user = JSON.parse(savedUser);
+      if (user.tickSpeed) {
+        currentTickSpeed = user.tickSpeed;
+      }
+    }
+  } catch (e) {
+    // default
+  }
+
   const now = Date.now();
   const newState = { ...sharedMarketState };
   let changed = false;
@@ -45,7 +58,7 @@ setInterval(() => {
       });
       
       history.push(newPoint);
-      // keep only last 2000 points (prevents 1Y data from being purged too quickly by 3s ticks)
+      // keep only last 2000 points
       if (history.length > 2000) history.shift();
       newState[productId] = history;
     }
@@ -55,7 +68,12 @@ setInterval(() => {
     sharedMarketState = newState;
     subscribers.forEach(cb => cb(sharedMarketState));
   }
-}, 3000);
+
+  setTimeout(runSimulation, currentTickSpeed);
+};
+
+// Start simulation loop
+runSimulation();
 
 export function useMarketSimulator() {
   const [market, setMarket] = useState<MarketState>(sharedMarketState);

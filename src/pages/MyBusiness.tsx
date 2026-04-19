@@ -1,12 +1,16 @@
-import React, { useMemo, useState, useRef, useEffect } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { useMarketSimulator } from '../hooks/useMarketSimulator';
 import { PRODUCTS, SUPPLIERS } from '../data/mockData';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 import { Trash2, ChevronUp, ChevronDown, CheckCircle as LucideCheckCircle } from 'lucide-react';
 
 export default function MyBusiness() {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const { market, orders, inventory, demand, updateDemand, removeDemand, favorites, toggleFavorite, placeOrder } = useMarketSimulator();
+  
+  const currencySymbol = user?.currency === 'USD' ? '$' : '€';
   const [showAdd, setShowAdd] = useState(false);
   const [addSearchTerm, setAddSearchTerm] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>({ key: 'totalValue', direction: 'desc' });
@@ -140,7 +144,7 @@ export default function MyBusiness() {
         <h1 style={{ marginBottom: '8px', fontSize: '1.5rem' }}>{t('My Business')}</h1>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-            {t('Total Valuation')}: <span style={{ fontWeight: 'bold', color: 'var(--text-primary)', fontSize: '1.2rem' }}>{totalPortfolioValue.toFixed(2)}€</span>
+            {t('Total Valuation')}: <span style={{ fontWeight: 'bold', color: 'var(--text-primary)', fontSize: '1.2rem' }}>{totalPortfolioValue.toFixed(2)}{currencySymbol}</span>
           </div>
           <button 
             onClick={() => setShowAdd(!showAdd)} 
@@ -302,10 +306,10 @@ export default function MyBusiness() {
                     >{asset.count}</span>
                   </td>
                   <td className="mono-nums" style={{ textAlign: 'right', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                    {asset.avgBuyPrice ? `${asset.avgBuyPrice.toFixed(2)}€` : '—'}
+                    {asset.avgBuyPrice ? `${asset.avgBuyPrice.toFixed(2)}${currencySymbol}` : '—'}
                   </td>
                   <td className="mono-nums" style={{ textAlign: 'right', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                    {asset.lastBuyPrice ? `${asset.lastBuyPrice.toFixed(2)}€` : '—'}
+                    {asset.lastBuyPrice ? `${asset.lastBuyPrice.toFixed(2)}${currencySymbol}` : '—'}
                   </td>
                   <td className="mono-nums" style={{ textAlign: 'right' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
@@ -331,10 +335,10 @@ export default function MyBusiness() {
                           {asset.lowestSupplier?.name?.charAt(0)}
                         </div>
                       )}
-                      <span>{asset.currentLowest.toFixed(2)}€</span>
+                      <span>{asset.currentLowest.toFixed(2)}{currencySymbol}</span>
                     </div>
                   </td>
-                  <td className="mono-nums" style={{ textAlign: 'right', fontWeight: 'bold' }}>{asset.totalValue.toFixed(2)}€</td>
+                  <td className="mono-nums" style={{ textAlign: 'right', fontWeight: 'bold' }}>{asset.totalValue.toFixed(2)}{currencySymbol}</td>
                   <td style={{ textAlign: 'right' }}>
                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                       <button 
@@ -430,7 +434,7 @@ export default function MyBusiness() {
                       )}
                       
                       <div className="mono-nums" style={{ fontWeight: 600, fontSize: '1.5rem' }}>
-                        {((businessAssets.find(a => a.id === showOrderModal)?.currentLowest || 0) * (Number(orderQuantity) || 0)).toFixed(2)}€
+                        {((businessAssets.find(a => a.id === showOrderModal)?.currentLowest || 0) * (Number(orderQuantity) || 0)).toFixed(2)}{currencySymbol}
                       </div>
                     </div>
                   </div>
