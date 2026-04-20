@@ -65,6 +65,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Confirm Demo Order": "Confirm Demo Order",
     "This is a concept demo. No real world fulfilment will occur.": "This is a concept demo. No real world fulfilment will occur.",
     "Buy": "Buy",
+    "Syncing live prices...": "Syncing live prices...",
+    "Live Data": "Live Data",
     
     // Orders
     "Portfolio Activity": "Portfolio Activity",
@@ -161,6 +163,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Cancel": "Cancelar",
     "Confirm Demo Order": "Confirmar Pedido de Prueba",
     "This is a concept demo. No real world fulfilment will occur.": "Esto es una demostración. No se realizará ningún pedido real.",
+    "Buy": "Comprar",
+    "Syncing live prices...": "Sincronizando precios en vivo...",
+    "Live Data": "Datos en Vivo",
     "Saved ": "Ahorrado ",
     
     // Mi Negocio

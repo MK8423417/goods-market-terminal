@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useMarketSimulator } from '../hooks/useMarketSimulator';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
-import { LogOut, Settings, Briefcase, Mail, CheckCircle, MapPin, Clock, DollarSign, Star, TrendingUp, Scale, BellRing, Package, Zap, Lock, Globe, Moon, Sun, MonitorPlay } from 'lucide-react';
+import { LogOut, Settings, Briefcase, Mail, CheckCircle, MapPin, Clock, DollarSign, Star, TrendingUp, Scale, BellRing, Package, Zap, Lock, Globe, Moon, Sun } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { SUPPLIERS } from '../data/mockData';
 
@@ -11,7 +11,7 @@ type Tab = 'overview' | 'business' | 'market' | 'alerts' | 'experience' | 'secur
 
 export default function Profile() {
   const { user, logout, updateProfile } = useAuth();
-  const { orders, inventory } = useMarketSimulator();
+  const { orders, inventory, sync } = useMarketSimulator();
   const { t, locale, toggleLanguage } = useLanguage();
   const { theme, setThemeDirectly } = useTheme();
   const navigate = useNavigate();
@@ -34,7 +34,8 @@ export default function Profile() {
     priceDropNotificationToggle: user?.priceDropNotificationToggle || 'in-app',
     lowInventoryAlerts: user?.lowInventoryAlerts ?? true,
     marketSummary: user?.marketSummary ?? false,
-    tickSpeed: user?.tickSpeed || 3000
+    tickSpeed: user?.tickSpeed || 3000,
+    marketMode: user?.marketMode || 'simulation'
   });
 
   if (!user) return null;
@@ -57,8 +58,8 @@ export default function Profile() {
 
   // Quick stats
   const totalOrders = orders.length;
-  const totalSpent = orders.reduce((sum, o) => sum + (o.price * o.quantity), 0);
-  const itemsInStock = Object.values(inventory).reduce((sum, qty) => sum + qty, 0);
+  const totalSpent = orders.reduce((sum: number, o: any) => sum + (o.price * o.quantity), 0);
+  const itemsInStock = Object.values(inventory).reduce((sum: number, qty: any) => sum + qty, 0);
 
   const renderTabs = () => {
     const tabs: {id: Tab, label: string}[] = [
@@ -351,26 +352,33 @@ export default function Profile() {
                 </button>
               </div>
 
-              {/* Sim Speed */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+              {/* Market Data Mode */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', gap: '12px' }}>
-                  <MonitorPlay size={20} color="var(--text-secondary)" />
+                  <Zap size={20} color="var(--text-secondary)" />
                   <div>
-                    <div style={{ fontWeight: 600 }}>{t('Simulator Tick Speed')}</div>
-                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Adjust the velocity of the simulated market algorithm.</div>
+                    <div style={{ fontWeight: 600 }}>{t('Market Data Source')}</div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Toggle between high-fidelity simulation and live Mercadona API.</div>
                   </div>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{user.tickSpeed ? (user.tickSpeed / 1000).toFixed(1) : '3.0'} sec</span>
-                  <input 
-                    type="range" 
-                    min="500" 
-                    max="10000" 
-                    step="500" 
-                    value={user.tickSpeed || 3000} 
-                    onChange={(e) => updateProfile({ tickSpeed: Number(e.target.value) })}
-                    style={{ width: '120px' }}
-                  />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button 
+                    onClick={() => updateProfile({ marketMode: 'simulation' })} 
+                    className="pill" 
+                    style={{ background: user.marketMode === 'simulation' ? 'var(--text-primary)' : 'var(--bg-secondary)', color: user.marketMode === 'simulation' ? 'var(--bg-color)' : 'var(--text-primary)' }}
+                  >
+                    Fake
+                  </button>
+                  <button 
+                    onClick={() => { 
+                      updateProfile({ marketMode: 'real' });
+                      sync();
+                    }} 
+                    className="pill" 
+                    style={{ background: user.marketMode === 'real' ? 'var(--text-primary)' : 'var(--bg-secondary)', color: user.marketMode === 'real' ? 'var(--bg-color)' : 'var(--text-primary)' }}
+                  >
+                    Real
+                  </button>
                 </div>
               </div>
 

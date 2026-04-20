@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useMarketSimulator } from '../hooks/useMarketSimulator';
-import { PRODUCTS, CATEGORIES, SUPPLIERS } from '../data/mockData';
+import { CATEGORIES, SUPPLIERS } from '../data/mockData';
 import { useNavigate } from 'react-router-dom';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import { Search, Star, Activity, CheckCircle as LucideCheckCircle, Filter, ChevronDown, Check } from 'lucide-react';
@@ -12,7 +12,7 @@ export type SortColumn = 'name' | 'category' | 'lowestPrice' | 'change24h';
 export type SortDir = 'asc' | 'desc';
 
 function Watchlist() {
-  const { market, favorites, toggleFavorite, alerts, placeOrder } = useMarketSimulator();
+  const { market, activeProducts, realMetadata, favorites, toggleFavorite, alerts, placeOrder, isSyncing } = useMarketSimulator();
   const [filter, setFilter] = useState<string>('All');
   const [search, setSearch] = useState('');
   const [sortCol, setSortCol] = useState<SortColumn>('name');
@@ -48,9 +48,20 @@ function Watchlist() {
   const weightUnit = user?.weightUnit || 'kg';
 
   // Process market data to find current lowest and 24h change
-  const processedProducts = PRODUCTS.map(p => {
+  const processedProducts = activeProducts.map(p => {
+    const isRealMode = user?.marketMode === 'real';
     const history = market[p.id] || [];
-    if (history.length < 2) return { ...p, currentLowest: 0, lowestSupplier: null, change24h: 0, history: [], sparkData: [], activeAlertTarget: null };
+    if (history.length < 2) return { 
+      ...p, 
+      currentLowest: 0, 
+      lowestSupplier: null, 
+      change24h: 0, 
+      history: [], 
+      sparkData: [], 
+      activeAlertTarget: null,
+      displayName: t(p.name),
+      realThumbnail: null
+    } as any;
 
     const currentPoint = history[history.length - 1];
     const yesterdayPoint = history[Math.max(0, history.length - 8)]; // Approximation of 24h ago in our ticks
@@ -58,8 +69,11 @@ function Watchlist() {
     let lowestPrice = Infinity;
     let lowestSupplierId = '';
     
+    // In Real Mode, strictly use Mercadona. In Simulation, allow filtering.
+    const effectiveSupplierIds = isRealMode ? new Set(['mercadona']) : selectedSupplierIds;
+
     Object.keys(SUPPLIERS).forEach(sId => {
-      if (selectedSupplierIds.has(sId) && currentPoint[sId] < lowestPrice) {
+      if (effectiveSupplierIds.has(sId) && currentPoint[sId] !== undefined && currentPoint[sId] < lowestPrice) {
         lowestPrice = currentPoint[sId];
         lowestSupplierId = sId;
       }
@@ -67,7 +81,7 @@ function Watchlist() {
 
     let yesterdayLowest = Infinity;
     Object.keys(SUPPLIERS).forEach(sId => {
-      if (selectedSupplierIds.has(sId) && yesterdayPoint[sId] < yesterdayLowest) yesterdayLowest = yesterdayPoint[sId];
+      if (effectiveSupplierIds.has(sId) && yesterdayPoint[sId] !== undefined && yesterdayPoint[sId] < yesterdayLowest) yesterdayLowest = yesterdayPoint[sId];
     });
 
     // Handle case where no suppliers are selected for this product
@@ -78,17 +92,19 @@ function Watchlist() {
         lowestSupplier: null,
         change24h: 0,
         sparkData: [],
-        activeAlertTarget: null
-      };
+        activeAlertTarget: null,
+        displayName: (isRealMode && realMetadata[p.id]) ? realMetadata[p.id].displayName : t(p.name),
+        realThumbnail: (isRealMode && realMetadata[p.id]) ? realMetadata[p.id].thumbnail : null
+      } as any;
     }
 
     const change24h = ((lowestPrice - yesterdayLowest) / yesterdayLowest) * 100;
 
     // Retrieve active alerts to attach to object
-    const activeAlertTarget = alerts.find(a => a.productId === p.id)?.targetPrice;
+    const activeAlertTarget = alerts.find((a: any) => a.productId === p.id)?.targetPrice;
 
     // formatted history for sparkline
-    const sparkData = history.slice(-20).map(h => ({ val: h[lowestSupplierId] }));
+    const sparkData = history.slice(-20).map((h: any) => ({ val: h[lowestSupplierId] }));
 
     return {
       ...p,
@@ -96,11 +112,15 @@ function Watchlist() {
       lowestSupplier: SUPPLIERS[lowestSupplierId],
       change24h,
       sparkData,
-      activeAlertTarget
+      activeAlertTarget,
+      // Priority: use the exact name from Mercadona if in Real mode
+      displayName: (isRealMode && realMetadata[p.id]) ? realMetadata[p.id].displayName : t(p.name),
+      realThumbnail: (isRealMode && realMetadata[p.id]) ? realMetadata[p.id].thumbnail : null
     };
   });
 
   const filtered = processedProducts.filter(p => {
+    if (user?.marketMode === 'real' && !p.mercadonaQuery) return false;
     if (filter === 'Favorites' && !favorites.includes(p.id)) return false;
     if (filter !== 'All' && filter !== 'Favorites' && p.category !== filter) return false;
     if (search) {
@@ -115,7 +135,7 @@ function Watchlist() {
   const sortedAndFiltered = filtered.sort((a, b) => {
     let comparison = 0;
     if (sortCol === 'name') {
-      comparison = t(a.name).localeCompare(t(b.name));
+      comparison = a.displayName.localeCompare(b.displayName);
     } else if (sortCol === 'category') {
       comparison = t(a.category).localeCompare(t(b.category));
     } else if (sortCol === 'lowestPrice') {
@@ -150,14 +170,7 @@ function Watchlist() {
     const targetProduct = processedProducts.find(p => p.id === showOrderModal);
     if (!targetProduct || !targetProduct.lowestSupplier) return;
 
-    placeOrder({
-      productId: targetProduct.id,
-      productName: targetProduct.name,
-      supplierId: targetProduct.lowestSupplier.id,
-      price: targetProduct.currentLowest,
-      quantity: orderQuantity,
-      savings: 0 // Simplification for Quick Buy metric comparison
-    });
+    placeOrder(targetProduct.id, targetProduct.lowestSupplier.id, orderQuantity, targetProduct.currentLowest, 0, targetProduct.displayName);
     setOrderSuccess(true);
     setTimeout(() => {
       setOrderSuccess(false);
@@ -205,85 +218,87 @@ function Watchlist() {
           </div>
 
           {/* New Supplier Dropdown Trigger */}
-          <div style={{ position: 'relative' }} ref={supplierDropdownRef}>
-            <button 
-              onClick={() => setShowSupplierDropdown(!showSupplierDropdown)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 12px',
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                color: 'var(--text-primary)',
-                fontSize: '0.85rem',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              <Filter size={14} />
-              <span>
-                {selectedSupplierIds.size === Object.keys(SUPPLIERS).length 
-                  ? t('All Suppliers') 
-                  : `${selectedSupplierIds.size} ${t('Suppliers')}`}
-              </span>
-              <ChevronDown size={14} style={{ transform: showSupplierDropdown ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
-            </button>
+          {user?.marketMode !== 'real' && (
+            <div style={{ position: 'relative' }} ref={supplierDropdownRef}>
+              <button 
+                onClick={() => setShowSupplierDropdown(!showSupplierDropdown)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 12px',
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.85rem',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                <Filter size={14} />
+                <span>
+                  {selectedSupplierIds.size === Object.keys(SUPPLIERS).length 
+                    ? t('All Suppliers') 
+                    : `${selectedSupplierIds.size} ${t('Suppliers')}`}
+                </span>
+                <ChevronDown size={14} style={{ transform: showSupplierDropdown ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+              </button>
 
-            {showSupplierDropdown && (
-              <div style={{
-                position: 'absolute',
-                top: 'calc(100% + 8px)',
-                left: 0,
-                width: '240px',
-                background: 'var(--bg-color)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '12px',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-                zIndex: 1000,
-                overflow: 'hidden'
-              }}>
-                <div style={{ padding: '12px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)' }}>
-                  <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{t('Select Suppliers')}</span>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={selectAllSuppliers} style={{ background: 'none', border: 'none', color: 'var(--color-up)', cursor: 'pointer', fontSize: '0.75rem', padding: 0 }}>{t('All')}</button>
-                    <button onClick={clearSuppliers} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.75rem', padding: 0 }}>{t('Reset')}</button>
+              {showSupplierDropdown && (
+                <div style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 8px)',
+                  left: 0,
+                  width: '240px',
+                  background: 'var(--bg-color)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '12px',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+                  zIndex: 1000,
+                  overflow: 'hidden'
+                }}>
+                  <div style={{ padding: '12px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{t('Select Suppliers')}</span>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button onClick={selectAllSuppliers} style={{ background: 'none', border: 'none', color: 'var(--color-up)', cursor: 'pointer', fontSize: '0.75rem', padding: 0 }}>{t('All')}</button>
+                      <button onClick={clearSuppliers} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.75rem', padding: 0 }}>{t('Reset')}</button>
+                    </div>
                   </div>
-                </div>
-                <div style={{ maxHeight: '300px', overflowY: 'auto', padding: '12px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    {Object.values(SUPPLIERS).map(s => (
-                      <div 
-                        key={s.id} 
-                        onClick={() => toggleSupplierId(s.id)}
-                        style={{ 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'space-between',
-                          padding: '8px 10px', 
-                          borderRadius: '8px',
-                          cursor: 'pointer',
-                          background: selectedSupplierIds.has(s.id) ? 'var(--bg-secondary)' : 'transparent',
-                        }}
-                        className="supplier-filter-item"
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          {s.logo ? (
-                            <img src={s.logo} alt="" style={{ width: '18px', height: '18px', borderRadius: '4px', background: '#fff' }} />
-                          ) : (
-                            <div style={{ width: '18px', height: '18px', borderRadius: '4px', background: s.color, color: '#fff', fontSize: '0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>{s.name.charAt(0)}</div>
-                          )}
-                          <span style={{ fontSize: '0.85rem', color: selectedSupplierIds.has(s.id) ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{s.name}</span>
+                  <div style={{ maxHeight: '300px', overflowY: 'auto', padding: '12px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {Object.values(SUPPLIERS).map(s => (
+                        <div 
+                          key={s.id} 
+                          onClick={() => toggleSupplierId(s.id)}
+                          style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'space-between',
+                            padding: '8px 10px', 
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            background: selectedSupplierIds.has(s.id) ? 'var(--bg-secondary)' : 'transparent',
+                          }}
+                          className="supplier-filter-item"
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            {s.logo ? (
+                              <img src={s.logo} alt="" style={{ width: '18px', height: '18px', borderRadius: '4px', background: '#fff' }} />
+                            ) : (
+                              <div style={{ width: '18px', height: '18px', borderRadius: '4px', background: s.color, color: '#fff', fontSize: '0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>{s.name.charAt(0)}</div>
+                            )}
+                            <span style={{ fontSize: '0.85rem', color: selectedSupplierIds.has(s.id) ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{s.name}</span>
+                          </div>
+                          {selectedSupplierIds.has(s.id) && <Check size={14} color="var(--color-up)" />}
                         </div>
-                        {selectedSupplierIds.has(s.id) && <Check size={14} color="var(--color-up)" />}
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
           {/* Category Filter Pills */}
           <div className="pill-scroll" style={{ paddingBottom: 0, flex: 1, margin: 0, overflowX: 'auto' }}>
@@ -299,6 +314,26 @@ function Watchlist() {
             ))}
           </div>
         </div>
+
+        {/* Real-time Sync Status Bar */}
+        {isSyncing && (
+          <div style={{ 
+            margin: '8px -20px 0 -20px', 
+            padding: '4px 20px', 
+            background: 'rgba(0, 130, 78, 0.1)', 
+            borderTop: '1px solid rgba(0, 130, 78, 0.2)',
+            borderBottom: '1px solid rgba(0, 130, 78, 0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            color: 'var(--color-up)',
+            fontSize: '0.75rem',
+            fontWeight: 500
+          }}>
+            <div className="sync-pulse" style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--color-up)' }}></div>
+            {t('Syncing live prices...')} (Mercadona)
+          </div>
+        )}
       </header>
 
 
@@ -310,9 +345,9 @@ function Watchlist() {
           style={{ tableLayout: 'fixed', width: '100%' }}
           fixedHeaderContent={() => (
             <tr style={{ background: 'var(--bg-color)' }}>
-              <th style={{ width: '5%', padding: '8px 16px' }}></th>
-              <th onClick={() => toggleSort('name')} style={{ width: '20%', cursor: 'pointer', padding: '8px 16px' }}>{t('Product')}{sortIndicator('name')}</th>
-              <th onClick={() => toggleSort('category')} style={{ width: '15%', cursor: 'pointer', padding: '8px 16px' }}>{t('Category')}{sortIndicator('category')}</th>
+               <th style={{ width: '5%', padding: '8px 16px' }}></th>
+               <th onClick={() => toggleSort('name')} style={{ width: '20%', cursor: 'pointer', padding: '8px 16px' }}>{user?.marketMode === 'real' ? 'Mercadona Product' : t('Product')}{sortIndicator('name')}</th>
+               <th onClick={() => toggleSort('category')} style={{ width: '15%', cursor: 'pointer', padding: '8px 16px' }}>{t('Category')}{sortIndicator('category')}</th>
               <th style={{ width: '10%', padding: '8px 16px' }}>{t('Unit')}</th>
               <th onClick={() => toggleSort('lowestPrice')} style={{ width: '15%', textAlign: 'right', cursor: 'pointer', padding: '8px 16px' }}>{t('Lowest Price')}{sortIndicator('lowestPrice')}</th>
               <th onClick={() => toggleSort('change24h')} style={{ width: '10%', textAlign: 'right', cursor: 'pointer', padding: '8px 16px' }}>{t('24h Change')}{sortIndicator('change24h')}</th>
@@ -335,8 +370,12 @@ function Watchlist() {
                 </td>
                 <td style={{ width: '20%', padding: '4px 16px', minWidth: 0 }} onClick={() => navigate(`/product/${p.id}`)}>
                   <div className="table-icon-cell" style={{ gap: '8px', minWidth: 0, overflow: 'hidden' }}>
-                    <div className="ticker-icon" style={{ width: '24px', height: '24px', fontSize: '0.8rem', flexShrink: 0 }}>{p.icon}</div>
-                    <span style={{ fontWeight: 500, fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t(p.name)}</span>
+                    {p.realThumbnail ? (
+                      <img src={p.realThumbnail} alt="" style={{ width: '24px', height: '24px', borderRadius: '4px', background: '#fff', flexShrink: 0 }} />
+                    ) : (
+                      <div className="ticker-icon" style={{ width: '24px', height: '24px', fontSize: '0.8rem', flexShrink: 0 }}>{p.icon}</div>
+                    )}
+                    <span style={{ fontWeight: 500, fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.displayName}</span>
                   </div>
                 </td>
                 <td style={{ width: '15%', color: 'var(--text-secondary)', fontSize: '0.8rem', padding: '4px 16px' }} onClick={() => navigate(`/product/${p.id}`)}>{t(p.category)}</td>
@@ -380,6 +419,19 @@ function Watchlist() {
                       </div>
                     )}
                     <span className="supplier-chip" style={{ background: 'transparent', color: 'var(--text-primary)', padding: 0, fontSize: '0.8rem' }}>{p.lowestSupplier?.name}</span>
+                    {p.lowestSupplier?.id === 'mercadona' && (
+                      <span style={{ 
+                        fontSize: '0.6rem', 
+                        background: 'rgba(0, 130, 78, 0.2)', 
+                        color: '#00824E', 
+                        padding: '1px 4px', 
+                        borderRadius: '4px',
+                        fontWeight: 'bold',
+                        marginLeft: '4px'
+                      }}>
+                        LIVE
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td style={{ width: '10%', padding: '4px 16px' }} onClick={() => navigate(`/product/${p.id}`)}>

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../context/LanguageContext';
-import { Store, User, Mail, Building2, Briefcase, Lock, ShieldCheck, Eye, EyeOff } from 'lucide-react';
+import { Store, Mail, Building2, Lock, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(false); // Default to registration

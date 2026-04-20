@@ -1,12 +1,11 @@
-import React from 'react';
 import { useMarketSimulator } from '../hooks/useMarketSimulator';
-import { PRODUCTS, SUPPLIERS } from '../data/mockData';
+import { SUPPLIERS } from '../data/mockData';
 import { BellOff } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 
 function Alerts() {
-  const { alerts, removeAlert, toggleAlert, market } = useMarketSimulator();
+  const { alerts, removeAlert, toggleAlert, market, activeProducts, realMetadata } = useMarketSimulator();
   const { t } = useLanguage();
   const { user } = useAuth();
   
@@ -26,8 +25,8 @@ function Alerts() {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {alerts.map(a => {
-            const p = PRODUCTS.find(prod => prod.id === a.productId);
+          {alerts.map((a: { id: string, productId: string, targetPrice: number, active: boolean }) => {
+            const p = activeProducts.find(prod => prod.id === a.productId);
             if (!p) return null;
             
             // Current price logic for comparison
@@ -45,7 +44,9 @@ function Alerts() {
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', minWidth: 0, overflow: 'hidden' }}>
                     <span style={{ fontSize: '1.2rem', flexShrink: 0 }}>{p.icon}</span>
-                    <span style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</span>
+                    <span style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {user?.marketMode === 'real' && realMetadata[p.id] ? realMetadata[p.id].displayName : t(p.name)}
+                    </span>
                   </div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                     {t('Target')}: <span className="mono-nums" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{a.targetPrice.toFixed(2)}{currencySymbol}</span>

@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom';
-import { Home, LayoutList, Bell, Moon, Sun, Store, User } from 'lucide-react';
+import { NavLink, useLocation, Navigate, BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { Home, LayoutList, Bell, Store, User } from 'lucide-react';
 import Watchlist from './pages/Watchlist';
 import ProductDetail from './pages/ProductDetail';
 import Orders from './pages/Orders';

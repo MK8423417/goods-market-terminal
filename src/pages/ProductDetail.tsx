@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useMarketSimulator } from '../hooks/useMarketSimulator';
-import { PRODUCTS, SUPPLIERS } from '../data/mockData';
+import { SUPPLIERS } from '../data/mockData';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { 
   ChevronLeft as LucideChevronLeft, 
@@ -16,14 +16,18 @@ import { useAuth } from '../context/AuthContext';
 function ProductDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { market, alerts, placeOrder, addAlert, removeAlert } = useMarketSimulator();
+  const { market, activeProducts, realMetadata, alerts, placeOrder, addAlert, removeAlert } = useMarketSimulator();
   const { t } = useLanguage();
   const { isAuthenticated, user } = useAuth();
   
   const currencySymbol = user?.currency === 'USD' ? '$' : '€';
   const weightUnit = user?.weightUnit || 'kg';
   
-  const product = PRODUCTS.find(p => p.id === id);
+  const product = activeProducts.find(p => p.id === id);
+  const isRealMode = user?.marketMode === 'real';
+  const displayName = (isRealMode && product && realMetadata[product.id]) ? realMetadata[product.id].displayName : (product ? t(product.name) : '');
+  const realThumbnail = (isRealMode && product && realMetadata[product.id]) ? realMetadata[product.id].thumbnail : null;
+  
   const history = market[id || ''] || [];
   
   const [orderQuantity, setOrderQuantity] = useState(1);
@@ -38,9 +42,10 @@ function ProductDetail() {
   const [selectedPrice, setSelectedPrice] = useState<number>(0);
 
   const [timeframe, setTimeframe] = useState<'1d'|'1w'|'1m'|'1y'>('1m');
-  const [visibleSuppliers, setVisibleSuppliers] = useState<Set<string>>(new Set(Object.keys(SUPPLIERS)));
+  const [visibleSuppliers, setVisibleSuppliers] = useState<Set<string>>(new Set(isRealMode ? ['mercadona'] : Object.keys(SUPPLIERS)));
   const [hoveredSupplierId, setHoveredSupplierId] = useState<string | null>(null);
   const [chartMode, setChartMode] = useState<'all' | 'lowest'>('all');
+  const [selectedSubTab, setSelectedSubTab] = useState<'comparison' | 'details'>('comparison');
   const quantityInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -60,11 +65,15 @@ function ProductDetail() {
   let lowestSupplierId = '';
   let providerCurrentPrices: Record<string, number> = {};
 
+  const effectiveSupplierIds = isRealMode ? new Set(['mercadona']) : new Set(Object.keys(SUPPLIERS));
+
   Object.keys(SUPPLIERS).forEach(sId => {
-    providerCurrentPrices[sId] = currentPoint[sId];
-    if (currentPoint[sId] < lowestPrice) {
-      lowestPrice = currentPoint[sId];
-      lowestSupplierId = sId;
+    if (effectiveSupplierIds.has(sId) && currentPoint[sId] !== undefined) {
+      providerCurrentPrices[sId] = currentPoint[sId];
+      if (currentPoint[sId] < lowestPrice) {
+        lowestPrice = currentPoint[sId];
+        lowestSupplierId = sId;
+      }
     }
   });
 
@@ -77,12 +86,14 @@ function ProductDetail() {
   else if (timeframe === '1m') timeLimit = now - (30 * 24 * 60 * 60 * 1000);
   else if (timeframe === '1y') timeLimit = now - (365 * 24 * 60 * 60 * 1000);
 
-  const chartData = history.filter(h => h.time >= timeLimit).map(h => {
+  const chartData = history.filter((h: any) => h.time >= timeLimit).map((h: any) => {
     const point: any = { timestamp: h.time };
     let lowestAtPoint = Infinity;
     Object.keys(SUPPLIERS).forEach(s => {
-      point[s] = h[s];
-      if (h[s] < lowestAtPoint) lowestAtPoint = h[s];
+      if (effectiveSupplierIds.has(s) && h[s] !== undefined) {
+        point[s] = h[s];
+        if (h[s] < lowestAtPoint) lowestAtPoint = h[s];
+      }
     });
     point['lowest'] = lowestAtPoint;
     return point;
@@ -122,7 +133,7 @@ function ProductDetail() {
   };
 
   const resetVisibility = () => {
-    setVisibleSuppliers(new Set(Object.keys(SUPPLIERS)));
+    setVisibleSuppliers(new Set(isRealMode ? ['mercadona'] : Object.keys(SUPPLIERS)));
   };
 
   const handleBuy = () => {
@@ -130,19 +141,8 @@ function ProductDetail() {
       navigate('/auth');
       return;
     }
-    // calculate average market price for savings
-    const currentPricesArray = Object.values(providerCurrentPrices);
-    const avgPrice = currentPricesArray.reduce((acc, v) => acc + v, 0) / currentPricesArray.length;
-    const savings = (avgPrice - selectedPrice) * orderQuantity;
 
-    placeOrder({
-      productId: product.id,
-      productName: product.name,
-      supplierId: selectedSupplierId || lowestSupplierId,
-      price: selectedPrice || lowestPrice,
-      quantity: orderQuantity,
-      savings
-    });
+    placeOrder(product.id, selectedSupplierId || lowestSupplierId, orderQuantity, selectedPrice || lowestPrice, (lowestPrice - selectedPrice) * orderQuantity, displayName);
     setOrderSuccess(true);
     setTimeout(() => {
       setOrderSuccess(false);
@@ -162,11 +162,7 @@ function ProductDetail() {
   };
 
   const handleCreateAlert = () => {
-    addAlert({
-      productId: product.id,
-      targetPrice: Number(alertTargetPriceStr) || 0,
-      active: true
-    });
+    addAlert(product.id, Number(alertTargetPriceStr));
     setAlertSuccess(true);
     setTimeout(() => {
       setAlertSuccess(false);
@@ -269,8 +265,12 @@ function ProductDetail() {
             {t('Go Back')}
           </button>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{ fontSize: '1.2rem' }}>{product.icon}</span>
-            <h1 style={{ fontSize: '1.1rem' }}>{t(product.name)}</h1>
+            {realThumbnail ? (
+              <img src={realThumbnail} alt="" style={{ width: '32px', height: '32px', borderRadius: '6px', background: '#fff' }} />
+            ) : (
+              <span style={{ fontSize: '1.2rem' }}>{product.icon}</span>
+            )}
+            <h1 style={{ fontSize: '1.1rem' }}>{displayName}</h1>
           </div>
           <button onClick={openAlertPanel} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
             <LucideBell size={20} color="var(--text-secondary)" />
@@ -316,16 +316,18 @@ function ProductDetail() {
             >
               {t('Suppliers')}
             </button>
-            <button 
-              onClick={() => setChartMode('lowest')}
-              style={{ 
-                background: chartMode === 'lowest' ? 'var(--text-primary)' : 'transparent',
-                color: chartMode === 'lowest' ? 'var(--bg-color)' : 'var(--text-secondary)',
-                border: 'none', borderRadius: '14px', padding: '4px 12px', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s'
-              }}
-            >
-              {t('Trend')}
-            </button>
+            {!isRealMode && (
+              <button 
+                onClick={() => setChartMode('lowest')}
+                style={{ 
+                  background: chartMode === 'lowest' ? 'var(--text-primary)' : 'transparent',
+                  color: chartMode === 'lowest' ? 'var(--bg-color)' : 'var(--text-secondary)',
+                  border: 'none', borderRadius: '14px', padding: '4px 12px', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s'
+                }}
+              >
+                {t('Trend')}
+              </button>
+            )}
           </div>
         </div>
   
@@ -402,25 +404,63 @@ function ProductDetail() {
         </div>
       )}
 
-      {/* Table */}
-      <div style={{ marginBottom: '32px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h3 style={{ fontSize: '1.1rem', margin: 0 }}>{t('Market Comparison')}</h3>
-          <button 
-            onClick={resetVisibility}
-            style={{ 
-              background: 'var(--bg-secondary)', 
-              border: '1px solid var(--border-color)', 
-              borderRadius: '8px', 
-              padding: '6px 12px', 
-              fontSize: '0.8rem', 
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
-          >
-            {t('Reset View')}
-          </button>
+      {/* Tabs Switcher for Comparison/Details */}
+      <div style={{ display: 'flex', gap: '24px', borderBottom: '1px solid var(--border-color)', marginBottom: '24px', padding: '0 4px' }}>
+        <button 
+          onClick={() => setSelectedSubTab('comparison')}
+          style={{ 
+            padding: '12px 4px', 
+            background: 'none', 
+            border: 'none', 
+            borderBottom: selectedSubTab === 'comparison' ? '2px solid var(--text-primary)' : '2px solid transparent',
+            color: selectedSubTab === 'comparison' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            fontWeight: 600,
+            fontSize: '1rem',
+            cursor: 'pointer',
+            transition: 'all 0.2s'
+          }}
+        >
+          {t('Market Comparison')}
+        </button>
+        <button 
+          onClick={() => setSelectedSubTab('details')}
+          style={{ 
+            padding: '12px 4px', 
+            background: 'none', 
+            border: 'none', 
+            borderBottom: selectedSubTab === 'details' ? '2px solid var(--text-primary)' : '2px solid transparent',
+            color: selectedSubTab === 'details' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            fontWeight: 600,
+            fontSize: '1rem',
+            cursor: 'pointer',
+            transition: 'all 0.2s'
+          }}
+        >
+          {t('Product Details')}
+        </button>
+      </div>
+
+      {selectedSubTab === 'comparison' ? (
+        <div style={{ marginBottom: '32px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={{ fontSize: '1.1rem', margin: 0 }}>{t('Real-time Suppliers')}</h3>
+          {!isRealMode && (
+            <button 
+              onClick={resetVisibility}
+              style={{ 
+                background: 'var(--bg-secondary)', 
+                border: '1px solid var(--border-color)', 
+                borderRadius: '8px', 
+                padding: '6px 12px', 
+                fontSize: '0.8rem', 
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              {t('Reset View')}
+            </button>
+          )}
         </div>
         <div style={{ background: 'var(--bg-color)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
           {Object.values(SUPPLIERS).sort((a, b) => providerCurrentPrices[a.id] - providerCurrentPrices[b.id]).map((s, idx) => {
@@ -430,7 +470,10 @@ function ProductDetail() {
             const isUp = change > 0;
             const isSelected = visibleSuppliers.has(s.id);
             const isAnySelected = visibleSuppliers.size < Object.keys(SUPPLIERS).length;
+            const isRealMode = user?.marketMode === 'real';
             
+            if (isRealMode && s.id !== 'mercadona') return null;
+
             return (
               <div 
                 key={s.id} 
@@ -516,6 +559,116 @@ function ProductDetail() {
           })}
         </div>
       </div>
+      ) : (
+        <div style={{ marginBottom: '32px' }}>
+          <div className="card" style={{ padding: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '32px' }}>
+              <div>
+                <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>{t('General Info')}</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{t('Brand')}</div>
+                    <div style={{ fontWeight: 600 }}>{realMetadata[product.id]?.brand || t('Unknown')}</div>
+                  </div>
+                  {(() => {
+                    const productCategories = realMetadata[product.id]?.categories;
+                    if (productCategories && productCategories.length > 0) {
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('Categories')}</div>
+                          <div style={{ fontSize: '0.9rem', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                            {productCategories.map((cat: string, idx: number) => (
+                              <span key={idx} style={{ 
+                                background: 'var(--bg-secondary)', 
+                                padding: '2px 8px', 
+                                borderRadius: '4px', 
+                                border: '1px solid var(--border-color)',
+                                fontSize: '0.8rem'
+                              }}>
+                                {cat}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                  {realMetadata[product.id]?.origin && (
+                    <div>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('Source / Origin')}</div>
+                      <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{realMetadata[product.id].origin}</div>
+                    </div>
+                  )}
+                  <div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('Format')}</div>
+                    <div style={{ fontWeight: 600 }}>{realMetadata[product.id]?.unitSize} {realMetadata[product.id]?.sizeFormat || weightUnit} ({realMetadata[product.id]?.packaging || t('Not specified')})</div>
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>{t('Nutritional Information')}</h4>
+                {realMetadata[product.id]?.nutritionalInfo ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>{t('Energy')}</span>
+                      <span className="mono-nums" style={{ fontWeight: 600 }}>{realMetadata[product.id]?.nutritionalInfo?.energy_kcal} kcal</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>{t('Fat')}</span>
+                      <span className="mono-nums">{realMetadata[product.id]?.nutritionalInfo?.fat}g</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>
+                      <span style={{ color: 'var(--text-secondary)', paddingLeft: '12px' }}>&bull; {t('Saturated')}</span>
+                      <span className="mono-nums">{realMetadata[product.id]?.nutritionalInfo?.saturated_fat}g</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>{t('Carbs')}</span>
+                      <span className="mono-nums">{realMetadata[product.id]?.nutritionalInfo?.carbohydrates}g</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>
+                      <span style={{ color: 'var(--text-secondary)', paddingLeft: '12px' }}>&bull; {t('Sugars')}</span>
+                      <span className="mono-nums">{realMetadata[product.id]?.nutritionalInfo?.sugars}g</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>{t('Proteins')}</span>
+                      <span className="mono-nums">{realMetadata[product.id]?.nutritionalInfo?.proteins}g</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>{t('Salt')}</span>
+                      <span className="mono-nums">{realMetadata[product.id]?.nutritionalInfo?.salt}g</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>{t('Nutritional data not available for this item.')}</div>
+                )}
+                
+                {realMetadata[product.id]?.shareUrl && (
+                  <div style={{ marginTop: '24px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+                    <a 
+                      href={realMetadata[product.id]?.shareUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      style={{ 
+                        display: 'inline-flex', 
+                        alignItems: 'center', 
+                        gap: '6px', 
+                        color: 'var(--color-up)', 
+                        fontSize: '0.85rem', 
+                        textDecoration: 'none',
+                        fontWeight: 500
+                      }}
+                    >
+                      {t('View on Mercadona Official Site')} ↗
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Buy & Alert Floating Panel */}
       <div style={{ position: 'fixed', bottom: '70px', left: 0, width: '100%', padding: '20px', zIndex: 40, background: (!showOrderPanel && !showAlertPanel) ? 'transparent' : 'linear-gradient(to top, var(--bg-color) 80%, transparent)' }}>

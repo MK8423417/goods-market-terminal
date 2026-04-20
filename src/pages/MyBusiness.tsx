@@ -1,6 +1,6 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { useMarketSimulator } from '../hooks/useMarketSimulator';
-import { PRODUCTS, SUPPLIERS } from '../data/mockData';
+import { SUPPLIERS } from '../data/mockData';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { Trash2, ChevronUp, ChevronDown, CheckCircle as LucideCheckCircle } from 'lucide-react';
@@ -8,7 +8,7 @@ import { Trash2, ChevronUp, ChevronDown, CheckCircle as LucideCheckCircle } from
 export default function MyBusiness() {
   const { t } = useLanguage();
   const { user } = useAuth();
-  const { market, orders, inventory, demand, updateDemand, removeDemand, favorites, toggleFavorite, placeOrder } = useMarketSimulator();
+  const { market, activeProducts, realMetadata, orders, inventory, demand, updateDemand, removeDemand, favorites, toggleFavorite, placeOrder } = useMarketSimulator();
   
   const currencySymbol = user?.currency === 'USD' ? '$' : '€';
   const [showAdd, setShowAdd] = useState(false);
@@ -30,7 +30,7 @@ export default function MyBusiness() {
 
   // Combine products with their current valuation and inventory counts
   const businessAssets = useMemo(() => {
-    const assets = PRODUCTS
+    const assets = activeProducts
       .filter(p => (inventory[p.id] && inventory[p.id] > 0) || demand[p.id] !== undefined)
       .map(p => {
         const history = market[p.id] || [];
@@ -53,18 +53,23 @@ export default function MyBusiness() {
         const totalValue = count * (lowestPrice || p.basePrice);
 
         // Calculate historical buy prices
-        const productOrders = orders.filter(o => o.productId === p.id);
-        const lastBuyPrice = productOrders.length > 0 ? productOrders[0].price : null;
+        const productOrders = orders.filter((o: any) => o.productId === p.id);
         
         let avgBuyPrice = null;
         if (productOrders.length > 0) {
-          const totalSpent = productOrders.reduce((sum, o) => sum + (o.price * o.quantity), 0);
-          const totalQty = productOrders.reduce((sum, o) => sum + o.quantity, 0);
+          const totalSpent = productOrders.reduce((sum: number, o: any) => sum + (o.price * o.quantity), 0);
+          const totalQty = productOrders.reduce((sum: number, o: any) => sum + o.quantity, 0);
           avgBuyPrice = totalSpent / totalQty;
         }
 
+        const lastBuyPrice = productOrders.length > 0 ? productOrders[productOrders.length - 1].price : null;
+
+        const isRealMode = user?.marketMode === 'real';
+
         return {
           ...p,
+          displayName: (isRealMode && realMetadata[p.id]) ? realMetadata[p.id].displayName : t(p.name),
+          realThumbnail: (isRealMode && realMetadata[p.id]) ? realMetadata[p.id].thumbnail : null,
           currentLowest: lowestPrice,
           lowestSupplier: lowestSupplierId ? SUPPLIERS[lowestSupplierId] : null,
           count,
@@ -120,14 +125,7 @@ export default function MyBusiness() {
     const targetAsset = businessAssets.find(a => a.id === showOrderModal);
     if (!targetAsset || !targetAsset.lowestSupplier) return;
 
-    placeOrder({
-      productId: targetAsset.id,
-      productName: targetAsset.name,
-      supplierId: targetAsset.lowestSupplier.id,
-      price: targetAsset.currentLowest,
-      quantity: Number(orderQuantity) || 1,
-      savings: 0 
-    });
+    placeOrder(targetAsset.id, targetAsset.lowestSupplier.id, Number(orderQuantity) || 1, targetAsset.currentLowest, 0, targetAsset.displayName);
     setOrderSuccess(true);
     setTimeout(() => {
       setOrderSuccess(false);
@@ -168,8 +166,10 @@ export default function MyBusiness() {
                 style={{ padding: '16px', fontSize: '1.2rem', marginBottom: '16px', borderRadius: '12px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', width: '100%', boxSizing: 'border-box' }}
               />
               <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', paddingRight: '4px' }}>
-                {PRODUCTS
-                  .filter(p => (!inventory[p.id] || inventory[p.id] === 0) && demand[p.id] === undefined)
+                {activeProducts
+                  .filter(p => {
+                    return (!inventory[p.id] || inventory[p.id] === 0) && demand[p.id] === undefined;
+                  })
                   .filter(p => {
                     const s = addSearchTerm.toLowerCase();
                     const nameMatch = p.name.toLowerCase().includes(s) || t(p.name).toLowerCase().includes(s);
@@ -265,10 +265,14 @@ export default function MyBusiness() {
               {businessAssets.map(asset => (
                 <tr key={asset.id}>
                   <td>
-                    <div className="table-icon-cell" style={{ minWidth: 0, overflow: 'hidden' }}>
-                      <div className="ticker-icon" style={{ width: '32px', height: '32px', fontSize: '1rem', flexShrink: 0 }}>{asset.icon}</div>
+                    <div className="table-icon-cell" style={{ minWidth: 0, overflow: 'hidden', gap: '8px' }}>
+                      {asset.realThumbnail ? (
+                        <img src={asset.realThumbnail} alt="" style={{ width: '32px', height: '32px', borderRadius: '4px', background: '#fff', flexShrink: 0 }} />
+                      ) : (
+                        <div className="ticker-icon" style={{ width: '32px', height: '32px', fontSize: '1rem', flexShrink: 0 }}>{asset.icon}</div>
+                      )}
                       <div style={{ minWidth: 0, overflow: 'hidden', flex: 1 }}>
-                        <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t(asset.name)}</div>
+                        <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{asset.displayName}</div>
                         <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t(asset.category)}</div>
                       </div>
                     </div>
@@ -379,7 +383,7 @@ export default function MyBusiness() {
               {orderSuccess ? (
                 <div style={{ textAlign: 'center', padding: '20px 0' }}>
                   <LucideCheckCircle size={48} color="var(--color-up)" style={{ margin: '0 auto 16px' }} />
-                  <h3 style={{ marginBottom: '8px' }}>{t('Order Placed Simulated')}</h3>
+                  <h3 style={{ marginBottom: '8px' }}>{user?.marketMode === 'real' ? t('Order Logged Successfully') : t('Order Placed Simulated')}</h3>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{t('Redirecting...')}</p>
                 </div>
               ) : (

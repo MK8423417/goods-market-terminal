@@ -1,9 +1,18 @@
-import React from 'react';
 import { useMarketSimulator } from '../hooks/useMarketSimulator';
 import { SUPPLIERS } from '../data/mockData';
 
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
+
+interface Order {
+  id: string;
+  productName: string;
+  quantity: number;
+  price: number;
+  savings: number;
+  timestamp: number;
+  supplierId: string;
+}
 
 function Orders() {
   const { orders } = useMarketSimulator();
@@ -12,8 +21,8 @@ function Orders() {
   
   const currencySymbol = user?.currency === 'USD' ? '$' : '€';
 
-  const totalSpent = orders.reduce((acc, o) => acc + o.price * o.quantity, 0);
-  const totalSaved = orders.reduce((acc, o) => acc + o.savings, 0);
+  const totalSpent = orders.reduce((acc: number, o: Order) => acc + o.price * o.quantity, 0);
+  const totalSaved = orders.reduce((acc: number, o: Order) => acc + o.savings, 0);
 
   return (
     <div className="page-content">
@@ -33,15 +42,15 @@ function Orders() {
         </div>
       </div>
 
-      <h2 style={{ fontSize: '1.1rem', marginBottom: '16px' }}>{t('Recent Simulated Orders')}</h2>
+      <h2 style={{ fontSize: '1.1rem', marginBottom: '16px' }}>{user?.marketMode === 'real' ? t('Real Order History') : t('Recent Simulated Orders')}</h2>
 
       {orders.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-secondary)' }}>
-          {t('No simulated orders yet. Go to Watchlist to mock a purchase.')}
+          {user?.marketMode === 'real' ? t('No real orders tracked yet.') : t('No simulated orders yet. Go to Watchlist to mock a purchase.')}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {orders.map(o => (
+          {orders.map((o: Order) => (
             <div key={o.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ minWidth: 0, overflow: 'hidden', flex: 1, marginRight: '16px' }}>
                 <div style={{ fontWeight: 600, marginBottom: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.productName} (x{o.quantity})</div>

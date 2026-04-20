@@ -27,6 +27,7 @@ export type UserProfile = {
   
   // Experience
   tickSpeed?: number;
+  marketMode?: 'simulation' | 'real';
 };
 
 type AuthContextType = {
