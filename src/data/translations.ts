@@ -28,6 +28,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Carnes": "Meat",
     "Pescadería": "Fish",
     "Bebidas": "Beverages",
+    "Congelados": "Frozen",
+    "Frutas y Verduras": "Fruit & Veg",
+    "Hogar": "Household",
+    "Cuidado Personal": "Personal Care",
     
     // Products
     "Huevos L": "Eggs (L)",
@@ -127,6 +131,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Carnes": "Carnes",
     "Pescadería": "Pescadería",
     "Bebidas": "Bebidas",
+    "Congelados": "Congelados",
+    "Frutas y Verduras": "Frutas y Verduras",
+    "Hogar": "Hogar",
+    "Cuidado Personal": "Cuidado Personal",
     
     // Products (Return identical string)
     "Huevos L": "Huevos L",

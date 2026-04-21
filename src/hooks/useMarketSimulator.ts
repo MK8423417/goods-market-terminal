@@ -1,7 +1,9 @@
-import { INITIAL_MARKET_STATE, PricePoint, SUPPLIERS, SIMULATED_PRODUCTS, REAL_PRODUCTS } from '../data/mockData';
+import { PricePoint, SUPPLIERS, Category } from '../data/mockData';
 import { PriceService } from '../services/PriceService';
-import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { db } from '../data/db';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { seedDatabase } from '../data/seeder';
 
 export type MarketState = Record<string, PricePoint[]>;
 
@@ -23,299 +25,263 @@ export interface Alert {
   active: boolean;
 }
 
-let sharedMarketState = { ...INITIAL_MARKET_STATE };
-let realMetadata: Record<string, { 
-  displayName: string, 
-  thumbnail: string,
-  brand?: string,
-  packaging?: string,
-  bulkPrice?: number,
-  referenceFormat?: string,
-  unitSize?: number,
-  sizeFormat?: string,
-  shareUrl?: string,
-  origin?: string,
-  categories?: string[],
-  nutritionalInfo?: {
-    energy_kcal?: number;
-    energy_kj?: number;
-    fat?: number;
-    saturated_fat?: number;
-    carbohydrates?: number;
-    sugars?: number;
-    proteins?: number;
-    salt?: number;
-  }
-}> = {};
-let subscribers: ((state: MarketState) => void)[] = [];
-let isSyncing = false;
+
+
+let isSyncingGlobal = false;
 let syncSubscribers: ((status: boolean) => void)[] = [];
 
-let currentTickSpeed = 3000;
-
-const syncMercadonaPrices = async () => {
-  if (isSyncing) return;
+const syncMercadonaPrices = async (targetProductIds: string[]) => {
+  if (isSyncingGlobal || targetProductIds.length === 0) return;
   
-  isSyncing = true;
+  const now = Date.now();
+  const meta = await db.syncMetadata.where('productId').anyOf(targetProductIds).toArray();
+  const metaMap = new Map(meta.map(m => [m.productId, m.lastSynced]));
+
+  const productsToSync = await db.products
+    .where('id').anyOf(targetProductIds)
+    .filter(p => !p.mercadonaQuery || (now - (metaMap.get(p.id) || 0) > 10 * 60 * 1000))
+    .toArray();
+
+  if (productsToSync.length === 0) return;
+
+  isSyncingGlobal = true;
   syncSubscribers.forEach(cb => cb(true));
   
   try {
-    const queries = REAL_PRODUCTS
-      .filter(p => p.mercadonaQuery)
-      .map(p => p.mercadonaQuery!);
-    
-    // Remote fetch
+    const queries = productsToSync.map(p => p.mercadonaQuery).filter(Boolean) as string[];
     const realPrices = await PriceService.fetchMultipleMercadonaPrices(queries);
     
-    const now = Date.now();
-    const newState = { ...sharedMarketState };
-    let changed = false;
-
-    REAL_PRODUCTS.forEach(p => {
+    for (const p of productsToSync) {
       if (p.mercadonaQuery && realPrices[p.mercadonaQuery] !== undefined) {
-        const mercDate = realPrices[p.mercadonaQuery];
-        const newPrice = mercDate.price;
+        const mercData = realPrices[p.mercadonaQuery];
+        const newPrice = mercData.price;
         
-        // Store Real Metadata
-        realMetadata[p.id] = { 
-          displayName: mercDate.displayName, 
-          thumbnail: mercDate.thumbnail,
-          brand: mercDate.brand,
-          packaging: mercDate.packaging,
-          bulkPrice: mercDate.bulkPrice,
-          referenceFormat: mercDate.referenceFormat,
-          unitSize: mercDate.unitSize,
-          sizeFormat: mercDate.sizeFormat,
-          shareUrl: mercDate.shareUrl,
-          origin: mercDate.origin,
-          categories: mercDate.categories,
-          nutritionalInfo: mercDate.nutritionalInfo
-        };
+        const lastPoint = await db.prices
+          .where('productId').equals(p.id)
+          .reverse()
+          .first();
 
-        const history = [...(newState[p.id] || [])];
-        const lastPoint = history.length > 0 ? history[history.length - 1] : null;
-        
-        // Only add a new point if the price actually changed or it's been a while,
-        // or just force update the last point to be real.
-        if (!lastPoint || lastPoint.mercadona !== newPrice) {
-          changed = true;
-          const newPoint: PricePoint = lastPoint 
-            ? { ...lastPoint, time: now, mercadona: newPrice }
-            : { time: now, mercadona: newPrice };
-          
+        const hourMs = 60 * 60 * 1000;
+        const shouldSave = !lastPoint || 
+                          lastPoint.mercadona !== newPrice || 
+                          (now - lastPoint.time > hourMs);
+
+        if (shouldSave) {
+          const newPoint: any = {
+            productId: p.id,
+            time: now,
+            mercadona: newPrice
+          };
+
+          // For authentic history, we only backfill other suppliers if we are in simulation mode.
+          // Since we are transitioning to real data, we keep the mercadona value as the truth.
           Object.keys(SUPPLIERS).forEach(sId => {
-            if (newPoint[sId] === undefined) {
-              newPoint[sId] = lastPoint ? lastPoint[sId] : p.basePrice;
+            if (sId !== 'mercadona') {
+              newPoint[sId] = lastPoint ? (lastPoint[sId] as any) : p.basePrice;
             }
           });
 
-          history.push(newPoint);
-          if (history.length > 2000) history.shift();
-          newState[p.id] = history;
+          await db.prices.add(newPoint);
+          
+          const historyCount = await db.prices.where('productId').equals(p.id).count();
+          if (historyCount > 100) {
+            const olderPoints = await db.prices.where('productId').equals(p.id).limit(historyCount - 100).toArray();
+            await db.prices.bulkDelete(olderPoints.map(op => [op.productId, op.time]));
+          }
+        }
+
+        await db.syncMetadata.put({ productId: p.id, lastSynced: now });
+
+        if (mercData.displayName || mercData.thumbnail || mercData.shareUrl) {
+          await db.products.update(p.id, { 
+            displayName: mercData.displayName || p.displayName || p.name,
+            realThumbnail: mercData.thumbnail || p.realThumbnail || (p.icon.startsWith('http') ? p.icon : undefined),
+            shareUrl: mercData.shareUrl || p.shareUrl
+          });
         }
       }
-    });
-
-    if (changed) {
-      sharedMarketState = newState;
-      subscribers.forEach(cb => cb(sharedMarketState));
     }
   } catch (error) {
     console.error("Failed to sync Mercadona prices:", error);
   } finally {
-    isSyncing = false;
+    isSyncingGlobal = false;
     syncSubscribers.forEach(cb => cb(false));
   }
 };
 
-const runSimulation = () => {
-  try {
-    const savedUser = localStorage.getItem('supplytrade_auth_user');
-    if (savedUser) {
-      const user = JSON.parse(savedUser);
-      if (user.tickSpeed) {
-        currentTickSpeed = user.tickSpeed;
-      }
-    }
-  } catch (e) {
-    // default
-  }
-
-  const now = Date.now();
-  const newState = { ...sharedMarketState };
-  let changed = false;
-
-  Object.keys(newState).forEach(productId => {
-    // 30% chance for a product to tick every interval
-    if (Math.random() < 0.3) {
-      changed = true;
-      const history = [...newState[productId]];
-      const lastPoint = { ...history[history.length - 1] };
-      const newPoint: PricePoint = { time: now };
-      
-      Object.keys(SUPPLIERS).forEach(sId => {
-        // Only random walk non-mercadona suppliers
-        // Mercadona is now "Real Data" only
-        if (sId === 'mercadona') {
-          newPoint[sId] = lastPoint[sId];
-          return;
-        }
-        
-        // Very small random walk (variance 0.01)
-        const walk = 1 + (Math.random() * 0.01 - 0.005);
-        newPoint[sId] = Number((lastPoint[sId] * walk).toFixed(2));
-      });
-      
-      history.push(newPoint);
-      // keep only last 2000 points
-      if (history.length > 2000) history.shift();
-      newState[productId] = history;
-    }
-  });
-
-  if (changed) {
-    sharedMarketState = newState;
-    subscribers.forEach(cb => cb(sharedMarketState));
-  }
-
-  setTimeout(runSimulation, currentTickSpeed);
-};
-
-// Start simulation loop
-runSimulation();
-
-// Initial sync
-setTimeout(syncMercadonaPrices, 1000);
-
-// Periodically sync every 5 minutes to keep it "Real Data"
-setInterval(syncMercadonaPrices, 5 * 60 * 1000);
-
 export function useMarketSimulator() {
-  const { user } = useAuth();
-  const currentMode = user?.marketMode || 'simulation';
-  const products = currentMode === 'real' ? REAL_PRODUCTS : SIMULATED_PRODUCTS;
-  const suffix = currentMode === 'real' ? '_real' : '_sim';
-
-  const [market, setMarket] = useState<MarketState>(sharedMarketState);
-  const [syncStatus, setSyncStatus] = useState<boolean>(isSyncing);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [favorites, setFavorites] = useState<string[]>([]);
-  const [inventory, setInventory] = useState<Record<string, number>>({});
-  const [demand, setDemand] = useState<Record<string, number | ''>>({});
-
+  const [syncStatus, setSyncStatus] = useState<boolean>(isSyncingGlobal);
+  const [searchQuery, setSearchQuery] = useState('');
+  
   useEffect(() => {
-    const savedOrders = localStorage.getItem(`supplytrade_orders${suffix}`);
-    setOrders(savedOrders ? JSON.parse(savedOrders) : []);
-    
-    const savedAlerts = localStorage.getItem(`supplytrade_alerts${suffix}`);
-    setAlerts(savedAlerts ? JSON.parse(savedAlerts) : []);
-
-    const savedFavs = localStorage.getItem(`supplytrade_favorites${suffix}`);
-    setFavorites(savedFavs ? JSON.parse(savedFavs) : []);
-
-    const savedInv = localStorage.getItem(`supplytrade_inventory${suffix}`);
-    setInventory(savedInv ? JSON.parse(savedInv) : {});
-
-    const savedDemand = localStorage.getItem(`supplytrade_demand${suffix}`);
-    setDemand(savedDemand ? JSON.parse(savedDemand) : {});
-
-    const handleSyncUpdate = (status: boolean) => setSyncStatus(status);
-    syncSubscribers.push(handleSyncUpdate);
-
-    const handleUpdate = (state: MarketState) => setMarket(state);
-    subscribers.push(handleUpdate);
-    return () => {
-      subscribers = subscribers.filter(cb => cb !== handleUpdate);
-      syncSubscribers = syncSubscribers.filter(cb => cb !== handleSyncUpdate);
-    };
-  }, [suffix]);
-
-  const sync = useCallback(() => {
-    syncMercadonaPrices();
+    seedDatabase().catch(console.error);
   }, []);
 
-  const placeOrder = useCallback((productId: string, supplierId: string, quantity: number, price: number, savings: number, productName: string) => {
-    const newOrder: Order = {
-      id: Math.random().toString(36).substr(2, 9),
-      productId,
-      supplierId,
-      quantity,
-      price,
-      savings,
-      productName,
-      timestamp: Date.now()
-    };
-    setOrders((prev: Order[]) => {
-      const updated = [newOrder, ...prev];
-      localStorage.setItem(`supplytrade_orders${suffix}`, JSON.stringify(updated));
-      return updated;
-    });
-    setInventory((prev: Record<string, number>) => {
-      const updated = { ...prev, [productId]: (prev[productId] || 0) + quantity };
-      localStorage.setItem(`supplytrade_inventory${suffix}`, JSON.stringify(updated));
-      return updated;
-    });
-  }, [suffix]);
-
-  const addAlert = useCallback((productId: string, targetPrice: number) => {
-    const newAlert: Alert = { id: Math.random().toString(36).substr(2, 9), productId, targetPrice, active: true };
-    setAlerts((prev: Alert[]) => {
-      const updated = [...prev, newAlert];
-      localStorage.setItem(`supplytrade_alerts${suffix}`, JSON.stringify(updated));
-      return updated;
-    });
-  }, [suffix]);
-
-  const toggleAlert = useCallback((id: string) => {
-    setAlerts((prev: Alert[]) => {
-      const updated = prev.map(a => a.id === id ? { ...a, active: !a.active } : a);
-      localStorage.setItem(`supplytrade_alerts${suffix}`, JSON.stringify(updated));
-      return updated;
-    });
-  }, [suffix]);
+  // Reactive queries
+  const allProducts = useLiveQuery(() => db.products.toArray()) || [];
+  const activeProducts = useMemo(() => allProducts.filter((p): p is any => !!p), [allProducts]);
   
-  const removeAlert = useCallback((id: string) => {
-    setAlerts((prev: Alert[]) => {
-      const updated = prev.filter((a: Alert) => a.id !== id);
-      localStorage.setItem(`supplytrade_alerts${suffix}`, JSON.stringify(updated));
-      return updated;
+  const allPrices = useLiveQuery(() => db.prices.toArray()) || [];
+  const market = useMemo(() => {
+    const map: MarketState = {};
+    allPrices.forEach(p => {
+      if (!map[p.productId]) map[p.productId] = [];
+      map[p.productId].push(p as any);
     });
-  }, [suffix]);
+    return map;
+  }, [allPrices]);
 
-  const toggleFavorite = useCallback((productId: string) => {
-    setFavorites((prev: string[]) => {
-      const updated = prev.includes(productId) 
-        ? prev.filter((id: string) => id !== productId) 
-        : [...prev, productId];
-      localStorage.setItem(`supplytrade_favorites${suffix}`, JSON.stringify(updated));
-      return updated;
+  const orders = useLiveQuery(() => db.orders.reverse().toArray()) || [];
+  const alerts = useLiveQuery(() => db.alerts.toArray()) || [];
+  const favoritesResults = useLiveQuery(() => db.favorites.toArray()) || [];
+  const favorites = useMemo(() => favoritesResults.map(f => f.productId), [favoritesResults]);
+  const inventoryResults = useLiveQuery(() => db.inventory.toArray()) || [];
+  const inventory = useMemo(() => {
+    const map: Record<string, number> = {};
+    inventoryResults.forEach(item => { map[item.productId] = item.quantity; });
+    return map;
+  }, [inventoryResults]);
+  const demandResults = useLiveQuery(() => db.demand.toArray()) || [];
+  const demand = useMemo(() => {
+    const map: Record<string, number | ''> = {};
+    demandResults.forEach(item => { map[item.productId] = item.quantity; });
+    return map;
+  }, [demandResults]);
+
+  useEffect(() => {
+    const handleSyncUpdate = (status: boolean) => setSyncStatus(status);
+    syncSubscribers.push(handleSyncUpdate);
+    return () => {
+      syncSubscribers = syncSubscribers.filter(cb => cb !== handleSyncUpdate);
+    };
+  }, []);
+
+  const sync = useCallback(async () => {
+    if (favorites.length > 0) {
+      await syncMercadonaPrices(favorites);
+    }
+  }, [favorites]);
+
+  const syncVisibleProducts = useCallback((productIds: string[]) => {
+    syncMercadonaPrices(productIds);
+  }, []);
+
+  const placeOrder = useCallback(async (productId: string, supplierId: string, quantity: number, price: number, savings: number, productName: string) => {
+    const id = Math.random().toString(36).substr(2, 9);
+    await db.orders.add({
+      id, productId, supplierId, quantity, price, savings, productName,
+      timestamp: Date.now()
     });
-  }, [suffix]);
-
-  const updateInventory = useCallback((productId: string, quantity: number) => {
-    setInventory((prev: Record<string, number>) => {
-      const updated = { ...prev, [productId]: quantity };
-      localStorage.setItem(`supplytrade_inventory${suffix}`, JSON.stringify(updated));
-      return updated;
+    
+    const existing = await db.inventory.get(productId);
+    await db.inventory.put({
+      productId,
+      quantity: (existing?.quantity || 0) + quantity
     });
-  }, [suffix]);
+  }, []);
 
-  const updateDemand = useCallback((productId: string, quantity: number | '') => {
-    setDemand((prev: Record<string, number | ''>) => {
-      const updated = { ...prev, [productId]: quantity };
-      localStorage.setItem(`supplytrade_demand${suffix}`, JSON.stringify(updated));
-      return updated;
-    });
-  }, [suffix]);
+  const toggleFavorite = useCallback(async (productId: string) => {
+    const exists = await db.favorites.get({ productId });
+    if (exists) {
+      await db.favorites.delete(productId);
+    } else {
+      await db.favorites.add({ productId });
+    }
+  }, []);
 
-  const removeDemand = useCallback((productId: string) => {
-    setDemand((prev: Record<string, number | ''>) => {
-      const { [productId]: _, ...rest } = prev;
-      localStorage.setItem(`supplytrade_demand${suffix}`, JSON.stringify(rest));
-      return rest;
-    });
-  }, [suffix]);
+  const updateInventory = useCallback(async (productId: string, quantity: number) => {
+    await db.inventory.put({ productId, quantity });
+  }, []);
 
-  return { market, activeProducts: products, realMetadata, orders, alerts, favorites, inventory, demand, isSyncing: syncStatus, sync, placeOrder, addAlert, toggleAlert, removeAlert, toggleFavorite, updateInventory, updateDemand, removeDemand };
+  const addAlert = useCallback(async (productId: string, targetPrice: number) => {
+    const id = Math.random().toString(36).substr(2, 9);
+    await db.alerts.add({ id, productId, targetPrice, active: true });
+  }, []);
+
+  const toggleAlert = useCallback(async (id: string) => {
+    const alert = await db.alerts.get(id);
+    if (alert) {
+      await db.alerts.update(id, { active: !alert.active });
+    }
+  }, []);
+  
+  const removeAlert = useCallback(async (id: string) => {
+    await db.alerts.delete(id);
+  }, []);
+
+  const updateDemand = useCallback(async (productId: string, quantity: number | '') => {
+    await db.demand.put({ productId, quantity });
+  }, []);
+
+  const removeDemand = useCallback(async (productId: string) => {
+    await db.demand.delete(productId);
+  }, []);
+
+  const globalSearch = useCallback(async (query: string) => {
+    if (!query || query.trim().length === 0) return;
+    
+    setSyncStatus(true);
+    try {
+      const results = await PriceService.searchMercadona(query);
+      if (results.length > 0) {
+        // Add new products to our local database if they don't exist
+        for (const item of results) {
+          const existing = await db.products.where('mercadonaQuery').equals(item.displayName).first();
+          if (!existing) {
+            const newId = `p_disc_${Math.random().toString(36).substr(2, 9)}`;
+            await db.products.add({
+              id: newId,
+              name: item.displayName,
+              displayName: item.displayName,
+              category: (item.categories?.[0] as Category) || 'Despensa',
+              unit: item.packaging || 'ud',
+              icon: item.thumbnail || '🛒',
+              basePrice: item.price,
+              mercadonaQuery: item.displayName,
+              realThumbnail: item.thumbnail,
+              shareUrl: item.shareUrl
+            });
+
+            // Add initial price point
+            await db.prices.add({
+              productId: newId,
+              time: Date.now(),
+              mercadona: item.price
+            } as any);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Global search failed:", err);
+    } finally {
+      setSyncStatus(false);
+    }
+  }, []);
+
+  // Automatic global search if local results are zero
+  useEffect(() => {
+    if (searchQuery.trim().length >= 3 && !syncStatus) {
+      const s = searchQuery.toLowerCase();
+      const localHits = activeProducts.filter(p => 
+        p.displayName?.toLowerCase().includes(s) || p.name.toLowerCase().includes(s)
+      );
+
+      if (localHits.length === 0) {
+        const timer = setTimeout(() => {
+          globalSearch(searchQuery);
+        }, 1000); // 1s debounce for auto-search
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [searchQuery, activeProducts, globalSearch, syncStatus]);
+
+  return { 
+    market, 
+    activeProducts, 
+    orders, alerts, favorites, inventory, demand, 
+    isSyncing: syncStatus, 
+    sync, syncVisibleProducts, placeOrder, toggleFavorite, updateInventory,
+    addAlert, toggleAlert, removeAlert, updateDemand, removeDemand,
+    searchQuery, setSearchQuery, globalSearch
+  };
 }

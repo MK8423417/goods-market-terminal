@@ -8,7 +8,18 @@ import { Trash2, ChevronUp, ChevronDown, CheckCircle as LucideCheckCircle } from
 export default function MyBusiness() {
   const { t } = useLanguage();
   const { user } = useAuth();
-  const { market, activeProducts, realMetadata, orders, inventory, demand, updateDemand, removeDemand, favorites, toggleFavorite, placeOrder } = useMarketSimulator();
+  const { 
+    market, 
+    activeProducts, 
+    orders, 
+    inventory, 
+    demand, 
+    updateDemand, 
+    removeDemand, 
+    favorites, 
+    toggleFavorite, 
+    placeOrder 
+  } = useMarketSimulator();
   
   const currencySymbol = user?.currency === 'USD' ? '$' : '€';
   const [showAdd, setShowAdd] = useState(false);
@@ -30,27 +41,28 @@ export default function MyBusiness() {
 
   // Combine products with their current valuation and inventory counts
   const businessAssets = useMemo(() => {
-    const assets = activeProducts
+    return activeProducts
       .filter(p => (inventory[p.id] && inventory[p.id] > 0) || demand[p.id] !== undefined)
       .map(p => {
         const history = market[p.id] || [];
         let lowestPrice = p.basePrice;
-        let lowestSupplierId = '';
+        let lowestSupplierId = 'mercadona';
 
         if (history.length > 0) {
-          const latest = history[history.length - 1];
-          lowestPrice = Infinity;
+          const latest: any = history[history.length - 1];
+          let minP = Infinity;
           Object.keys(SUPPLIERS).forEach(sId => {
-            if (latest[sId] < lowestPrice) {
-              lowestPrice = latest[sId];
+            if (latest[sId] !== undefined && latest[sId] < minP) {
+              minP = latest[sId];
               lowestSupplierId = sId;
             }
           });
+          if (minP !== Infinity) lowestPrice = minP;
         }
 
         const count = inventory[p.id] || 0;
         const target = demand[p.id] || 0;
-        const totalValue = count * (lowestPrice || p.basePrice);
+        const totalValue = count * lowestPrice;
 
         // Calculate historical buy prices
         const productOrders = orders.filter((o: any) => o.productId === p.id);
@@ -64,48 +76,35 @@ export default function MyBusiness() {
 
         const lastBuyPrice = productOrders.length > 0 ? productOrders[productOrders.length - 1].price : null;
 
-        const isRealMode = user?.marketMode === 'real';
-
         return {
           ...p,
-          displayName: (isRealMode && realMetadata[p.id]) ? realMetadata[p.id].displayName : t(p.name),
-          realThumbnail: (isRealMode && realMetadata[p.id]) ? realMetadata[p.id].thumbnail : null,
+          displayName: p.displayName || t(p.name),
           currentLowest: lowestPrice,
-          lowestSupplier: lowestSupplierId ? SUPPLIERS[lowestSupplierId] : null,
+          lowestSupplier: SUPPLIERS[lowestSupplierId] || SUPPLIERS.mercadona,
           count,
           target,
           totalValue,
           avgBuyPrice,
           lastBuyPrice
         };
-      });
-
-    // Apply sorting
-    if (sortConfig) {
-      assets.sort((a, b) => {
-        let aVal: any = a[sortConfig.key as keyof typeof b];
+      })
+      .sort((a, b) => {
+        if (!sortConfig) return 0;
+        let aVal: any = a[sortConfig.key as keyof typeof a];
         let bVal: any = b[sortConfig.key as keyof typeof b];
 
-        // Handle text sorting for name
         if (sortConfig.key === 'name') {
-          aVal = t(a.name).toLowerCase();
-          bVal = t(b.name).toLowerCase();
-          return sortConfig.direction === 'asc' 
-            ? aVal.localeCompare(bVal) 
-            : bVal.localeCompare(aVal);
+          aVal = a.displayName.toLowerCase();
+          bVal = b.displayName.toLowerCase();
+          return sortConfig.direction === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
         }
 
-        // Default numeric sorting
-        return sortConfig.direction === 'asc' 
-          ? (aVal as number) - (bVal as number) 
-          : (bVal as number) - (aVal as number);
+        if (typeof aVal === 'number' && typeof bVal === 'number') {
+          return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal;
+        }
+        return 0;
       });
-    } else {
-      assets.sort((a, b) => b.totalValue - a.totalValue);
-    }
-
-    return assets;
-  }, [market, inventory, orders, demand, sortConfig, t]);
+  }, [activeProducts, market, inventory, demand, orders, sortConfig, t]);
 
   const requestSort = (key: string) => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -120,12 +119,20 @@ export default function MyBusiness() {
     return sortConfig.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />;
   };
 
-  const handleQuickBuy = () => {
+  const handleQuickBuy = async () => {
     if (!showOrderModal) return;
     const targetAsset = businessAssets.find(a => a.id === showOrderModal);
-    if (!targetAsset || !targetAsset.lowestSupplier) return;
+    if (!targetAsset) return;
 
-    placeOrder(targetAsset.id, targetAsset.lowestSupplier.id, Number(orderQuantity) || 1, targetAsset.currentLowest, 0, targetAsset.displayName);
+    await placeOrder(
+      targetAsset.id, 
+      targetAsset.lowestSupplier.id, 
+      Number(orderQuantity) || 1, 
+      targetAsset.currentLowest, 
+      0, 
+      targetAsset.displayName
+    );
+    
     setOrderSuccess(true);
     setTimeout(() => {
       setOrderSuccess(false);
@@ -167,43 +174,31 @@ export default function MyBusiness() {
               />
               <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', paddingRight: '4px' }}>
                 {activeProducts
-                  .filter(p => {
-                    return (!inventory[p.id] || inventory[p.id] === 0) && demand[p.id] === undefined;
-                  })
+                  .filter(p => !inventory[p.id] && demand[p.id] === undefined)
                   .filter(p => {
                     const s = addSearchTerm.toLowerCase();
-                    const nameMatch = p.name.toLowerCase().includes(s) || t(p.name).toLowerCase().includes(s);
-                    
-                    // Also check if this supplier is current lowest for this product (reusing logic from top of component)
-                    const history = market[p.id] || [];
-                    let lowestSupplierName = "";
-                    if (history.length > 0) {
-                      const latest = history[history.length - 1];
-                      let lowP = Infinity;
-                      let lowSId = "";
-                      Object.keys(SUPPLIERS).forEach(id => {
-                        if (latest[id] < lowP) { lowP = latest[id]; lowSId = id; }
-                      });
-                      lowestSupplierName = SUPPLIERS[lowSId]?.name || "";
-                    }
-                    
-                    const supplierMatch = lowestSupplierName.toLowerCase().includes(s);
-                    return nameMatch || supplierMatch;
+                    return p.displayName?.toLowerCase().includes(s) || t(p.name).toLowerCase().includes(s) || p.category.toLowerCase().includes(s);
                   })
+                  .slice(0, 50) // Limit results for performance
                   .map(p => (
                   <button 
                     key={p.id}
-                    onClick={() => { 
-                      updateDemand(p.id, 1); 
-                      if (!favorites.includes(p.id)) toggleFavorite(p.id);
+                    onClick={async () => { 
+                      await updateDemand(p.id, 1); 
+                      // Automatically add to favorites if tracking as business
+                      if (!favorites.includes(p.id)) await toggleFavorite(p.id);
                       setShowAdd(false); 
                       setAddSearchTerm('');
                     }}
                     style={{ background: 'var(--bg-color)', border: '1px solid var(--border-color)', padding: '12px 16px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '16px', cursor: 'pointer', color: 'var(--text-primary)', textAlign: 'left', width: '100%', transition: 'background 0.2s' }}
                   >
-                    <span style={{ fontSize: '1.8rem' }}>{p.icon}</span>
+                    {p.realThumbnail ? (
+                      <img src={p.realThumbnail} alt="" style={{ width: '32px', height: '32px', borderRadius: '6px', background: '#fff' }} />
+                    ) : (
+                      <span style={{ fontSize: '1.8rem' }}>{p.icon}</span>
+                    )}
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '4px' }}>{t(p.name)}</div>
+                      <div style={{ fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '4px' }}>{p.displayName || t(p.name)}</div>
                       <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{t(p.category)}</div>
                     </div>
                   </button>
@@ -216,162 +211,152 @@ export default function MyBusiness() {
 
       {businessAssets.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
-          {t('Your inventory is empty. Place orders on the Watchlist to stock up!')}
+          {t('Your inventory is empty. Track products to see them here!')}
         </div>
       ) : (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <table className="data-table" style={{ margin: 0 }}>
-            <thead>
-              <tr style={{ background: 'var(--bg-secondary)' }}>
-                <th style={{ width: '22%', cursor: 'pointer' }} onClick={() => requestSort('name')}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    {t('Product')} {getSortIcon('name')}
-                  </div>
-                </th>
-                <th style={{ width: '10%', textAlign: 'right', cursor: 'pointer' }} onClick={() => requestSort('target')}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-                    {t('Target')} {getSortIcon('target')}
-                  </div>
-                </th>
-                <th style={{ width: '10%', textAlign: 'right', cursor: 'pointer' }} onClick={() => requestSort('count')}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-                    {t('Stock')} {getSortIcon('count')}
-                  </div>
-                </th>
-                <th style={{ width: '12%', textAlign: 'right', cursor: 'pointer' }} onClick={() => requestSort('avgBuyPrice')}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-                    {t('Avg Buy')} {getSortIcon('avgBuyPrice')}
-                  </div>
-                </th>
-                <th style={{ width: '12%', textAlign: 'right', cursor: 'pointer' }} onClick={() => requestSort('lastBuyPrice')}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-                    {t('Last Buy')} {getSortIcon('lastBuyPrice')}
-                  </div>
-                </th>
-                <th style={{ width: '12%', textAlign: 'right', cursor: 'pointer' }} onClick={() => requestSort('currentLowest')}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-                    {t('Live Price')} {getSortIcon('currentLowest')}
-                  </div>
-                </th>
-                <th style={{ width: '12%', textAlign: 'right', cursor: 'pointer' }} onClick={() => requestSort('totalValue')}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-                    {t('Value')} {getSortIcon('totalValue')}
-                  </div>
-                </th>
-                <th style={{ width: '10%', textAlign: 'right' }}>{t('Actions')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {businessAssets.map(asset => (
-                <tr key={asset.id}>
-                  <td>
-                    <div className="table-icon-cell" style={{ minWidth: 0, overflow: 'hidden', gap: '8px' }}>
-                      {asset.realThumbnail ? (
-                        <img src={asset.realThumbnail} alt="" style={{ width: '32px', height: '32px', borderRadius: '4px', background: '#fff', flexShrink: 0 }} />
-                      ) : (
-                        <div className="ticker-icon" style={{ width: '32px', height: '32px', fontSize: '1rem', flexShrink: 0 }}>{asset.icon}</div>
-                      )}
-                      <div style={{ minWidth: 0, overflow: 'hidden', flex: 1 }}>
-                        <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{asset.displayName}</div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t(asset.category)}</div>
-                      </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table" style={{ margin: 0, width: '100%' }}>
+              <thead>
+                <tr style={{ background: 'var(--bg-secondary)' }}>
+                  <th style={{ width: '22%', cursor: 'pointer' }} onClick={() => requestSort('name')}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      {t('Product')} {getSortIcon('name')}
                     </div>
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <input 
-                      type="number"
-                      className="mono-nums"
-                      value={asset.target}
-                      onChange={(e) => updateDemand(asset.id, e.target.value === '' ? '' : Number(e.target.value))}
-                      onFocus={(e) => e.target.select()}
-                      placeholder="0"
-                      style={{ 
-                        width: '70px', 
-                        textAlign: 'right', 
-                        padding: '6px', 
-                        borderRadius: '6px', 
-                        border: '1px solid var(--border-color)',
-                        background: 'var(--bg-color)',
-                        color: 'var(--text-primary)'
-                      }}
-                    />
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <span 
-                      className="mono-nums"
-                      style={{ 
-                        display: 'inline-block',
-                        width: '70px', 
-                        textAlign: 'right', 
-                        padding: '6px', 
-                        color: asset.count >= (Number(asset.target) || 0) && (Number(asset.target) || 0) > 0 ? 'var(--color-up)' : 'var(--text-primary)',
-                        fontWeight: asset.count >= (Number(asset.target) || 0) && (Number(asset.target) || 0) > 0 ? 'bold' : 'normal'
-                      }}
-                    >{asset.count}</span>
-                  </td>
-                  <td className="mono-nums" style={{ textAlign: 'right', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                    {asset.avgBuyPrice ? `${asset.avgBuyPrice.toFixed(2)}${currencySymbol}` : '—'}
-                  </td>
-                  <td className="mono-nums" style={{ textAlign: 'right', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                    {asset.lastBuyPrice ? `${asset.lastBuyPrice.toFixed(2)}${currencySymbol}` : '—'}
-                  </td>
-                  <td className="mono-nums" style={{ textAlign: 'right' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
-                      {asset.lowestSupplier?.logo ? (
-                        <img 
-                          src={asset.lowestSupplier.logo} 
-                          alt="logo"
-                          style={{ width: '14px', height: '14px', borderRadius: '3px', objectFit: 'contain', background: '#fff', padding: '1px' }}
-                        />
-                      ) : (
-                        <div style={{ 
-                          width: '14px', 
-                          height: '14px', 
-                          borderRadius: '3px', 
-                          background: asset.lowestSupplier?.color, 
-                          color: '#FFF', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'center', 
-                          fontSize: '0.5rem', 
-                          fontWeight: 'bold' 
-                        }}>
-                          {asset.lowestSupplier?.name?.charAt(0)}
-                        </div>
-                      )}
-                      <span>{asset.currentLowest.toFixed(2)}{currencySymbol}</span>
+                  </th>
+                  <th style={{ width: '10%', textAlign: 'right', cursor: 'pointer' }} onClick={() => requestSort('target')}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                      {t('Target')} {getSortIcon('target')}
                     </div>
-                  </td>
-                  <td className="mono-nums" style={{ textAlign: 'right', fontWeight: 'bold' }}>{asset.totalValue.toFixed(2)}{currencySymbol}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                      <button 
-                        className="buy-btn" 
-                        style={{ padding: '4px 8px', fontSize: '0.75rem', width: 'auto', display: 'inline-flex' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowOrderModal(asset.id);
-                        }}
-                      >
-                        {t('Buy')}
-                      </button>
-                      <button 
-                        style={{ padding: '4px 8px', fontSize: '0.75rem', width: 'auto', display: 'inline-flex', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '24px', color: 'var(--color-down)', cursor: 'pointer', outline: 'none' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (window.confirm(t("Remove this product from your tracked business list?"))) {
-                            removeDemand(asset.id);
-                          }
-                        }}
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                  </th>
+                  <th style={{ width: '10%', textAlign: 'right', cursor: 'pointer' }} onClick={() => requestSort('count')}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                      {t('Stock')} {getSortIcon('count')}
                     </div>
-                  </td>
+                  </th>
+                  <th style={{ width: '12%', textAlign: 'right', cursor: 'pointer' }} onClick={() => requestSort('avgBuyPrice')}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                      {t('Avg Buy')} {getSortIcon('avgBuyPrice')}
+                    </div>
+                  </th>
+                  <th style={{ width: '12%', textAlign: 'right', cursor: 'pointer' }} onClick={() => requestSort('currentLowest')}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                      {t('Live Price')} {getSortIcon('currentLowest')}
+                    </div>
+                  </th>
+                  <th style={{ width: '12%', textAlign: 'right', cursor: 'pointer' }} onClick={() => requestSort('totalValue')}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                      {t('Value')} {getSortIcon('totalValue')}
+                    </div>
+                  </th>
+                  <th style={{ width: '10%', textAlign: 'right' }}>{t('Actions')}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {businessAssets.map(asset => (
+                  <tr key={asset.id}>
+                    <td>
+                      <div className="table-icon-cell" style={{ minWidth: 0, overflow: 'hidden', gap: '8px' }}>
+                        {asset.realThumbnail ? (
+                          <img src={asset.realThumbnail} alt="" style={{ width: '32px', height: '32px', borderRadius: '4px', background: '#fff', flexShrink: 0 }} />
+                        ) : (
+                          <div className="ticker-icon" style={{ width: '32px', height: '32px', fontSize: '1rem', flexShrink: 0 }}>{asset.icon}</div>
+                        )}
+                        <div style={{ minWidth: 0, overflow: 'hidden', flex: 1 }}>
+                          <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{asset.displayName}</div>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t(asset.category)}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <input 
+                        type="number"
+                        className="mono-nums"
+                        value={asset.target || ''}
+                        onChange={async (e) => await updateDemand(asset.id, e.target.value === '' ? 0 : Number(e.target.value))}
+                        onFocus={(e) => e.target.select()}
+                        placeholder="0"
+                        style={{ 
+                          width: '70px', 
+                          textAlign: 'right', 
+                          padding: '6px', 
+                          borderRadius: '6px', 
+                          border: '1px solid var(--border-color)',
+                          background: 'var(--bg-color)',
+                          color: 'var(--text-primary)'
+                        }}
+                      />
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <span 
+                        className="mono-nums"
+                        style={{ 
+                          display: 'inline-block',
+                          width: '70px', 
+                          textAlign: 'right', 
+                          padding: '6px', 
+                          color: asset.count >= (asset.target || 0) && (asset.target || 0) > 0 ? 'var(--color-up)' : 'var(--text-primary)',
+                          fontWeight: asset.count >= (asset.target || 0) && (asset.target || 0) > 0 ? 'bold' : 'normal'
+                        }}
+                      >{asset.count}</span>
+                    </td>
+                    <td className="mono-nums" style={{ textAlign: 'right', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                      {asset.avgBuyPrice ? `${asset.avgBuyPrice.toFixed(2)}${currencySymbol}` : '—'}
+                    </td>
+                    <td className="mono-nums" style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
+                        {asset.lowestSupplier?.logo ? (
+                          <img 
+                            src={asset.lowestSupplier.logo} 
+                            alt="logo"
+                            style={{ width: '14px', height: '14px', borderRadius: '3px', objectFit: 'contain', background: '#fff', padding: '1px' }}
+                          />
+                        ) : (
+                          <div style={{ 
+                            width: '14px', 
+                            height: '14px', 
+                            borderRadius: '3px', 
+                            background: asset.lowestSupplier?.color, 
+                            color: '#FFF', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            fontSize: '0.5rem', 
+                            fontWeight: 'bold' 
+                          }}>
+                            {asset.lowestSupplier?.name?.charAt(0)}
+                          </div>
+                        )}
+                        <span>{asset.currentLowest.toFixed(2)}{currencySymbol}</span>
+                      </div>
+                    </td>
+                    <td className="mono-nums" style={{ textAlign: 'right', fontWeight: 'bold' }}>{asset.totalValue.toFixed(2)}{currencySymbol}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                        <button 
+                          className="buy-btn" 
+                          style={{ padding: '4px 8px', fontSize: '0.75rem', width: 'auto' }}
+                          onClick={() => setShowOrderModal(asset.id)}
+                        >
+                          {t('Buy')}
+                        </button>
+                        <button 
+                          style={{ background: 'none', border: 'none', color: 'var(--color-down)', cursor: 'pointer', padding: '4px' }}
+                          onClick={async () => {
+                            if (window.confirm(t("Remove this product from your tracked business list?"))) {
+                              await removeDemand(asset.id);
+                            }
+                          }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -383,8 +368,8 @@ export default function MyBusiness() {
               {orderSuccess ? (
                 <div style={{ textAlign: 'center', padding: '20px 0' }}>
                   <LucideCheckCircle size={48} color="var(--color-up)" style={{ margin: '0 auto 16px' }} />
-                  <h3 style={{ marginBottom: '8px' }}>{user?.marketMode === 'real' ? t('Order Logged Successfully') : t('Order Placed Simulated')}</h3>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{t('Redirecting...')}</p>
+                  <h3 style={{ marginBottom: '8px' }}>{t('Order Successful')}</h3>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{t('Updating stock...')}</p>
                 </div>
               ) : (
                 <>
@@ -407,44 +392,13 @@ export default function MyBusiness() {
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '24px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
                     <div style={{ fontWeight: 600, fontSize: '1.2rem' }}>{t('Estimated Total')}</div>
-                    
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                      {businessAssets.find(a => a.id === showOrderModal)?.lowestSupplier && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          {businessAssets.find(a => a.id === showOrderModal)?.lowestSupplier?.logo ? (
-                            <img 
-                              src={businessAssets.find(a => a.id === showOrderModal)?.lowestSupplier?.logo} 
-                              alt="logo"
-                              style={{ width: '16px', height: '16px', borderRadius: '3px', objectFit: 'contain', background: '#fff', padding: '1px' }}
-                            />
-                          ) : (
-                            <div style={{ 
-                              width: '16px', 
-                              height: '16px', 
-                              borderRadius: '3px', 
-                              background: businessAssets.find(a => a.id === showOrderModal)?.lowestSupplier?.color, 
-                              color: '#FFF', 
-                              display: 'flex', 
-                              alignItems: 'center', 
-                              justifyContent: 'center', 
-                              fontSize: '0.6rem', 
-                              fontWeight: 'bold' 
-                            }}>
-                              {businessAssets.find(a => a.id === showOrderModal)?.lowestSupplier?.name?.charAt(0)}
-                            </div>
-                          )}
-                          <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{businessAssets.find(a => a.id === showOrderModal)?.lowestSupplier?.name}</span>
-                        </div>
-                      )}
-                      
-                      <div className="mono-nums" style={{ fontWeight: 600, fontSize: '1.5rem' }}>
-                        {((businessAssets.find(a => a.id === showOrderModal)?.currentLowest || 0) * (Number(orderQuantity) || 0)).toFixed(2)}{currencySymbol}
-                      </div>
+                    <div className="mono-nums" style={{ fontWeight: 600, fontSize: '1.5rem' }}>
+                      {((businessAssets.find(a => a.id === showOrderModal)?.currentLowest || 0) * (Number(orderQuantity) || 0)).toFixed(2)}{currencySymbol}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '12px' }}>
                     <button className="secondary-btn" onClick={() => { setShowOrderModal(null); setOrderQuantity(1); }}>{t('Cancel')}</button>
-                    <button className="buy-btn" onClick={handleQuickBuy} disabled={!orderQuantity || orderQuantity === 0} style={{ opacity: (!orderQuantity || orderQuantity === 0) ? 0.5 : 1 }}>{t('Confirm Demo Order')}</button>
+                    <button className="buy-btn" onClick={handleQuickBuy} disabled={!orderQuantity || Number(orderQuantity) === 0}>{t('Confirm Order')}</button>
                   </div>
                 </>
               )}

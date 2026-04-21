@@ -5,7 +5,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 
 function Alerts() {
-  const { alerts, removeAlert, toggleAlert, market, activeProducts, realMetadata } = useMarketSimulator();
+  const { alerts, removeAlert, toggleAlert, market, activeProducts } = useMarketSimulator();
   const { t } = useLanguage();
   const { user } = useAuth();
   
@@ -26,7 +26,7 @@ function Alerts() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {alerts.map((a: { id: string, productId: string, targetPrice: number, active: boolean }) => {
-            const p = activeProducts.find(prod => prod.id === a.productId);
+            const p = activeProducts.find(prod => prod?.id === a.productId);
             if (!p) return null;
             
             // Current price logic for comparison
@@ -34,18 +34,25 @@ function Alerts() {
             let currentPrice = 0;
             if (history.length > 0) {
               const cp = history[history.length - 1];
-              currentPrice = Math.min(...Object.keys(SUPPLIERS).map(s => cp[s]));
+              const prices = Object.keys(SUPPLIERS)
+                .map(s => cp[s as keyof typeof cp] as number)
+                .filter(pr => pr !== undefined && pr !== null);
+              currentPrice = prices.length > 0 ? Math.min(...prices) : 0;
             }
 
-            const isTriggered = currentPrice <= a.targetPrice;
+            const isTriggered = currentPrice > 0 && currentPrice <= a.targetPrice;
 
             return (
               <div key={a.id} className="card" style={{ opacity: a.active ? 1 : 0.6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
+                <div style={{ minWidth: 0, flex: 1, marginRight: '16px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', minWidth: 0, overflow: 'hidden' }}>
-                    <span style={{ fontSize: '1.2rem', flexShrink: 0 }}>{p.icon}</span>
+                    {p.realThumbnail ? (
+                      <img src={p.realThumbnail} alt="" style={{ width: '24px', height: '24px', borderRadius: '4px', background: '#fff' }} />
+                    ) : (
+                      <span style={{ fontSize: '1.2rem', flexShrink: 0 }}>{p.icon}</span>
+                    )}
                     <span style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {user?.marketMode === 'real' && realMetadata[p.id] ? realMetadata[p.id].displayName : t(p.name)}
+                      {p.displayName || t(p.name)}
                     </span>
                   </div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
@@ -54,8 +61,8 @@ function Alerts() {
                     {t('Current')}: <span className="mono-nums" style={{ color: isTriggered && a.active ? 'var(--color-up)' : 'var(--text-secondary)' }}>{currentPrice.toFixed(2)}{currencySymbol}</span>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => toggleAlert(a.id)} style={{ padding: '8px 12px', borderRadius: '16px', border: '1px solid var(--border-color)', background: a.active ? 'var(--bg-secondary)' : 'transparent', fontSize: '0.8rem', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                  <button onClick={() => toggleAlert(a.id)} style={{ padding: '8px 12px', borderRadius: '16px', border: '1px solid var(--border-color)', background: a.active ? 'var(--bg-secondary)' : 'transparent', fontSize: '0.8rem', cursor: 'pointer', color: 'var(--text-primary)' }}>
                     {a.active ? t('Pause') : t('Resume')}
                   </button>
                   <button onClick={() => removeAlert(a.id)} style={{ padding: '8px', color: 'var(--color-down)', background: 'transparent', border: 'none', cursor: 'pointer' }}>

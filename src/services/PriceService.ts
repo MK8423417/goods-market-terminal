@@ -117,5 +117,63 @@ export const PriceService = {
 
     await Promise.all(promises);
     return results;
+  },
+
+  /**
+   * Searches for multiple products based on a string.
+   */
+  async searchMercadona(query: string, hitsPerPage: number = 20): Promise<MercadonaPrice[]> {
+    try {
+      const response = await fetch(ALGOLIA_URL, {
+        method: 'POST',
+        headers: {
+          'x-algolia-application-id': ALGOLIA_APP_ID,
+          'x-algolia-api-key': ALGOLIA_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          params: `query=${encodeURIComponent(query)}&hitsPerPage=${hitsPerPage}`,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Algolia API error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const hits = data.hits || [];
+
+      return hits.map((hit: any) => {
+        const priceInstr = hit.price_instructions || {};
+        const price = parseFloat(priceInstr.unit_price || '0');
+        return {
+          price: price > 0 ? price : 0,
+          displayName: hit.display_name,
+          thumbnail: hit.thumbnail,
+          brand: hit.brand,
+          packaging: hit.packaging,
+          bulkPrice: parseFloat(priceInstr.bulk_price || '0'),
+          referenceFormat: priceInstr.reference_format,
+          unitSize: priceInstr.unit_size,
+          sizeFormat: priceInstr.size_format,
+          shareUrl: hit.share_url,
+          origin: hit.origin,
+          categories: (hit.categories || []).map((c: any) => typeof c === 'string' ? c : (c.name || '')).filter(Boolean),
+          nutritionalInfo: hit.nutritional_info ? {
+            energy_kcal: hit.nutritional_info.energy_kcal,
+            energy_kj: hit.nutritional_info.energy_kj,
+            fat: hit.nutritional_info.fat,
+            saturated_fat: hit.nutritional_info.saturated_fat,
+            carbohydrates: hit.nutritional_info.carbohydrates,
+            sugars: hit.nutritional_info.sugars,
+            proteins: hit.nutritional_info.proteins,
+            salt: hit.nutritional_info.salt
+          } : undefined
+        };
+      });
+    } catch (error) {
+      console.error(`Failed to search Mercadona for "${query}":`, error);
+      return [];
+    }
   }
 };
